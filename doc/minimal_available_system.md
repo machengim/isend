@@ -3,6 +3,8 @@ Minimal Available System Test on Google Cloud
 
 ### VPC for Serverless
 
+Update: The easiest way to do it is to deploy Cloud SQl and Compute Engine's private IP section as default and no need to create an individual VPC.
+
 Create a VPC network:   https://console.cloud.google.com/networking/networks/list
 
 
@@ -58,7 +60,21 @@ Now create database, table, and populate some data into it.
 
 Build rust program in release mode and upload it to a cloud instance for test.
 
-### Key Management
+### Secret Manager
+
++ Store the database password to Secreat manager.
+
++ IAM -> Service account -> Create service account -> Give secret access permission to a role.
+
++ Create an Compute Engine instance of this role. Now it has permission to retrieve secret by:
+
+    curl "https://secretmanager.googleapis.com/v1/projects/`project-id`/secrets/`secret-id`/versions/`version-id`:access" \
+        --request "GET" \
+        --header "authorization: Bearer $(gcloud auth print-access-token)" \
+        --header "content-type: application/json" \
+        --header "x-goog-user-project: `project-id`"
+
+Note the response should be decoded by base64.
 
 ### Communication between Cloud Run and Cloud SQL in Rust
 
