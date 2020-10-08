@@ -1,6 +1,6 @@
-use std::env;
 use std::vec::Vec;
 use clap::{Arg, App, ArgMatches, Values};
+use crate::utils;
 
 pub enum Argument {
     S(SendArg),
@@ -32,10 +32,7 @@ impl SendArg {
         dotenv::dotenv().ok();
 
         SendArg {
-            expire: env::var("EXPIRE").
-                unwrap_or(String::from("10"))
-                .parse()
-                .unwrap(),
+            expire: utils::read_env("EXPIRE", "10"),
             length: 6,
             port: 0,
             msg: None,
@@ -69,10 +66,7 @@ impl SendArg {
 impl ReceiveArg {
     fn default() -> Self {
         ReceiveArg {
-            expire: env::var("EXPIRE").
-                unwrap_or(String::from("10"))
-                .parse()
-                .unwrap(),
+            expire: utils::read_env("EXPIRE", "10"),
             port: 0,
             dir: None,
             code: String::new(),

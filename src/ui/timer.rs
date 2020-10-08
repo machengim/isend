@@ -41,20 +41,15 @@ fn run_timer(total: u64, start: Instant, tx: Receiver<bool>) -> Result<Status> {
     while start.elapsed().as_secs() < total {
         std::thread::sleep(std::time::Duration::from_secs(1));
         // If received message from main process then stop loop.
-        if let Ok(s) = tx.try_recv() {
-            if s { return Ok(Status::Success); }
+        if let Ok(true) = tx.try_recv() {
+            print_text("")?;
+            return Ok(Status::Success); 
         }
         let text = timer_text(total - start.elapsed().as_secs());
-
-        stdout()
-            .execute(Clear(ClearType::CurrentLine))?
-            .execute(MoveLeft(999))?
-            .execute(Print(text))?;
+        print_text(&text)?;
     }
 
-    stdout()
-        .execute(Clear(ClearType::CurrentLine))?
-        .execute(MoveLeft(999))?;
+    print_text("")?;
 
     Ok(Status::Timeout)
 }
@@ -65,4 +60,13 @@ fn timer_text(rest: u64) -> String {
     let sec_str = if sec >= 10 {sec.to_string()} else {format!("0{}", sec)};
 
     format!("Awating response {}:{}", min, sec_str)
+}
+
+fn print_text(text: &str) -> Result<()> {
+    stdout()
+        .execute(Clear(ClearType::CurrentLine))?
+        .execute(MoveLeft(999))?
+        .execute(Print(text))?;
+
+    Ok(())
 }
