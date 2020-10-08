@@ -1,6 +1,7 @@
 mod cli;
 mod sender;
 mod utils;
+mod ui;
 
 fn main() {
     match cli::parse_args(){

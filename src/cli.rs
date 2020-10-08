@@ -1,3 +1,4 @@
+use std::env;
 use std::vec::Vec;
 use clap::{Arg, App, ArgMatches, Values};
 
@@ -8,28 +9,33 @@ pub enum Argument {
 
 #[derive(Debug)]
 pub struct SendArg {
-    expire: u8,
-    length: u8,
-    port: u16,
-    msg: Option<String>,
-    files: Option<Vec<String>>,
-    shutdown: bool
+    pub expire: u16,
+    pub length: u8,
+    pub port: u16,
+    pub msg: Option<String>,
+    pub files: Option<Vec<String>>,
+    pub shutdown: bool
 }
 
 #[derive(Debug)]
 pub struct ReceiveArg {
-    expire: u8,
-    port: u16,
-    dir: Option<String>,
-    code: String,
-    shutdown: bool,
-    overwrite: bool,
+    pub expire: u16,
+    pub port: u16,
+    pub dir: Option<String>,
+    pub code: String,
+    pub shutdown: bool,
+    pub overwrite: bool,
 }
 
 impl SendArg {
     fn default() -> Self {
+        dotenv::dotenv().ok();
+
         SendArg {
-            expire: 10,
+            expire: env::var("EXPIRE").
+                unwrap_or(String::from("10"))
+                .parse()
+                .unwrap(),
             length: 6,
             port: 0,
             msg: None,
@@ -63,7 +69,10 @@ impl SendArg {
 impl ReceiveArg {
     fn default() -> Self {
         ReceiveArg {
-            expire: 10,
+            expire: env::var("EXPIRE").
+                unwrap_or(String::from("10"))
+                .parse()
+                .unwrap(),
             port: 0,
             dir: None,
             code: String::new(),
