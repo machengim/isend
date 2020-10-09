@@ -22,13 +22,27 @@ impl OpenSocket {
     
         Ok(port)
     }
+
+    pub fn unwrap_udp(&self) -> Option<&UdpSocket>{
+        match self {
+            OpenSocket::Udp(u) => Some(u),
+            _ => None,
+        }
+    }
+
+    pub fn unwrap_tcp(&self) -> Option<&TcpListener>{
+        match self {
+            OpenSocket::Tcp(t) => Some(t),
+            _ => None,
+        }
+    }
 }
 
-pub fn bind_socket(socket: &SocketAddr, stype: SocketType)
+pub fn bind_socket(addr: &SocketAddr, stype: SocketType)
     -> std::io::Result<OpenSocket> {
     
-    let ip = socket.ip();
-    let port = socket.port();
+    let ip = addr.ip();
+    let port = addr.port();
 
     let socket = match stype {
         SocketType::TCP => bind_tcp(ip, port)?,
@@ -50,6 +64,15 @@ fn bind_tcp(ip: IpAddr, port: u16) -> std::io::Result<OpenSocket> {
     let socket = OpenSocket::Tcp(tcp_socket);
 
     Ok(socket)
+}
+
+pub fn send_broadcast(udp: &UdpSocket, dest_port: u16) -> Result<()> {
+    udp.set_broadcast(true)?;
+    let dest = format!("{}:{}", "255.255.255.255", dest_port);
+    let buf = [0; 6];
+    udp.send_to(&buf, dest)?;
+
+    Ok(())
 }
 
 pub fn listen_udp(socket: &OpenSocket, pass: &str) -> Result<SocketAddr>{
