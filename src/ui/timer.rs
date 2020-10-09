@@ -1,7 +1,6 @@
 use std::io::stdout;
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc;
 use std::time::Instant;
-
 use crossterm::{
     style::Print,
     cursor::MoveLeft,
@@ -9,47 +8,50 @@ use crossterm::{
     ExecutableCommand, Result,
 };
 
-enum Status {
+
+pub enum Status {
     Timeout,
     Success,
 }
 
-pub fn start_timer(total: u64, tx: Receiver<bool>) {
+pub fn start_timer(total: u16) -> mpsc::Sender<bool> {
     let start = Instant::now();
+    let (tx, rx) = mpsc::channel();
 
-    if let Err(_) = stdout().execute(Print(timer_text(total))) {
-        eprintln!("Cannot start timer.\n");
-        std::process::exit(1);
+    if let Err(_) = stdout().execute(Print(timer_text(total as u64))) {
+        panic!("Cannot display timer.\n");
     }
 
-    match run_timer(total, start, tx) {
-        Ok(Status::Timeout) => {
-            println!("No response got in specific duration.\n");
-            std::process::exit(0);
-        },
-        Ok(Status::Success) => {
-            println!("Start connecting...\n");
+    std::thread::spawn(move || {
+        match  run_timer(start, total as u64, rx) {
+            Ok(Status::Timeout) => {
+                println!("No connection established in time.\n");
+                std::process::exit(0)
+            },
+            Ok(Status::Success) => println!("Start connecting...\n"),
+            _ => panic!("Error happens when counting time"),
         }
-        Err(_) => {
-            eprintln!("Error happens when running timer.\n");
-            std::process::exit(1);
-        }
-    }
+    });
+
+    tx
 }
 
-fn run_timer(total: u64, start: Instant, tx: Receiver<bool>) -> Result<Status> {
-    while start.elapsed().as_secs() < total {
+fn run_timer(start: Instant, total: u64, rx: mpsc::Receiver<bool>) -> Result<Status> {
+    loop {
         std::thread::sleep(std::time::Duration::from_secs(1));
-        // If received message from main process then stop loop.
-        if let Ok(true) = tx.try_recv() {
+        if let Ok(true) = rx.try_recv() {
             print_text("")?;
-            return Ok(Status::Success); 
+            return Ok(Status::Success)
         }
-        let text = timer_text(total - start.elapsed().as_secs());
+
+        let rest = total - start.elapsed().as_secs();
+        if rest <= 0 {
+            break;
+        }
+
+        let text = timer_text(rest);
         print_text(&text)?;
     }
-
-    print_text("")?;
 
     Ok(Status::Timeout)
 }

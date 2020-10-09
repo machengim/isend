@@ -6,6 +6,7 @@ use crossterm::{
     ExecutableCommand, Result,
 };
 
+
 pub fn print_color_text(s: &str) -> Result<()>{
     stdout()
         .execute(SetForegroundColor(Color::White))?

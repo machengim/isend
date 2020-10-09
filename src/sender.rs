@@ -1,49 +1,39 @@
-use std::net::UdpSocket;
-use std::sync::mpsc;
-use rand::Rng;
-use crate::{cli, utils, ui, ui::timer};
+use crate::{cli, ui, utils};
+use crate::network::{SocketType, bind_socket, get_socket_addr, listen_udp};
 
-struct Udp {
-    addr: UdpSocket,
-    port: u16,
-}
 
-pub fn launch(arg: &cli::SendArg) {
-    let Udp{addr: udp_socket, port} = match bind_udp(arg) {
-        Ok(udp) => udp,
-        Err(_) => {
-            eprintln!("Cannot bind udp socket.\n");
-            std::process::exit(1);
-        }
+pub fn launch(arg: &cli::Argument) {
+    let send_arg: &cli::SendArg = match arg {
+        cli::Argument::S(s) => s,
+        _ => panic!("Wrong input arguments."),
     };
 
-    let pass = rand::thread_rng().gen_range(10, 100);
-    let code = format!("{}{}", utils::port_to_hex(port), pass);
+    let addr = get_socket_addr("0.0.0.0", send_arg.port);
+    let udp_socket = bind_socket(&addr, SocketType::UDP)
+        .expect("Cannot bind udp socket");
+
+    // Generate code for connection.
+    // The first 4 are port, the rest 2 are password.
+    let port = udp_socket.get_socket_port()
+        .expect("Cannot read port from udp socket.");
+    let password = print_code(port, 2);
+
+    let tx = ui::timer::start_timer(send_arg.expire * 60);
+    let dest_socket = listen_udp(&udp_socket, &password)
+        .expect("Error happens when listening on UDP.");
+    tx.send(true)
+        .expect("Send message to channel failed.");
+}
+
+// length range: 0 ~ 8
+fn print_code(port: u16, length: usize) -> String {
+    let port_str = utils::decimal_to_hex(port as u32, 4);
+    let pass_str = utils::generate_rand_hex_code(length);
+    let code = format!("{}{}", port_str, pass_str);
+
     print!("Code is: ", );
-    ui::print_color_text(&code).expect("Cannot print code");
+    ui::print_color_text(&code)
+        .expect("Cannot print code.");
 
-    listen_udp(arg.expire, udp_socket);
-}
-
-fn bind_udp(arg: &cli::SendArg) -> std::io::Result<Udp> {
-    let udp_socket: UdpSocket = UdpSocket::bind(("0.0.0.0", arg.port))?;
-
-    let port = udp_socket.local_addr()?
-        .port();
-
-    Ok(Udp{addr: udp_socket, port})
-}
-
-fn listen_udp(expire: u16, udp_socket: UdpSocket) {
-    let (tx, rx) = mpsc::channel();
-    std::thread::spawn(move || {
-        timer::start_timer((expire * 60) as u64, rx);
-    });
-
-    let mut buf = [0; 6];
-    while let Ok((n, addr)) = udp_socket.recv_from(&mut buf) {
-        println!("{} bytes response from {:?}", n, addr);
-        // TODO: Check whether the code is valid.
-        tx.send(true);
-    }
+    return pass_str;
 }

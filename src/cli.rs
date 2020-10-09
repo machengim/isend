@@ -2,6 +2,7 @@ use std::vec::Vec;
 use clap::{Arg, App, ArgMatches, Values};
 use crate::utils;
 
+
 pub enum Argument {
     S(SendArg),
     R(ReceiveArg),
@@ -65,6 +66,8 @@ impl SendArg {
 
 impl ReceiveArg {
     fn default() -> Self {
+        dotenv::dotenv().ok();
+
         ReceiveArg {
             expire: utils::read_env("EXPIRE", "10"),
             port: 0,
