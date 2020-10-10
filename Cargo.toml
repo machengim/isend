@@ -8,8 +8,7 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.33"
-async-std = "1.6.5"
+async-std = {version = "1.6.5", features = ["attributes"]}
 clap = "3.0.0-beta.2"
 crossterm = "0.18"
-dotenv = "0.15.0"
 rand = "0.7.3"
