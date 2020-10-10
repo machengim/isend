@@ -1,5 +1,5 @@
-use std::io::{Error, ErrorKind, Result};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, UdpSocket};
+use anyhow::Result;
 use crate::utils;
 
 
@@ -76,20 +76,21 @@ pub fn send_broadcast(udp: &UdpSocket, dest_port: u16) -> Result<()> {
 }
 
 pub fn listen_udp(socket: &OpenSocket, pass: &str) -> Result<SocketAddr>{
-    if let OpenSocket::Udp(udp_socket) = socket {
-        let mut buf = [0; 6];
-        while let Ok((_, addr)) = udp_socket.recv_from(&mut buf) {
-            let buf_str = std::str::from_utf8(&buf)
-                .expect("Cannot convert buf to string");
+    let udp_socket = match socket{
+        OpenSocket::Udp(u) => u,
+        _ => panic!("Unknown UDP socket to listen."),
+    };
 
-            if utils::validate_hex_str(buf_str) && utils::compare_buf_pass(&buf, pass) {
-                let port = utils::hex_to_decimal(&buf_str[..4]);
-                return Ok(SocketAddr::new(addr.ip(), port));
-            }
+    let mut buf = [0; 6];
+    loop  {
+        let (_, addr) = udp_socket.recv_from(&mut buf)?;
+        let buf_str = std::str::from_utf8(&buf)?;
+
+        if utils::validate_hex_str(buf_str) && utils::compare_buf_pass(&buf, pass) {
+            let port = utils::hex_to_decimal(&buf_str[..4]);
+            return Ok(SocketAddr::new(addr.ip(), port));
         }
     }
-
-    Err(Error::new(ErrorKind::Other, "Unknown UDP socket to listen on."))
 }
 
 pub fn get_socket_addr(ip_str: &str, port: u16) -> SocketAddr {
