@@ -16,6 +16,14 @@ pub fn refresh_line(s: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn print_code(code: &str) -> Result<()> {
+    print!("Your code is: \t");
+    print_color_text(code)?;
+    println!("");
+
+    Ok(())
+}
+
 pub fn print_color_text(s: &str) -> Result<()> {
     stdout()
         .execute(SetForegroundColor(Color::White))?
