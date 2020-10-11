@@ -14,12 +14,6 @@ pub async fn launch(arg: &entities::SendArg) -> Result<()>{
 
     let dest = listen_upd(&socket, pass).await?;
     tx.send(true)?;
-    connect_tcp(&dest).await?;
-
-    Ok(())
-}
-
-pub async fn connect_tcp(dest: &SocketAddr) -> Result<()> {
     let mut stream = TcpStream::connect(dest).await?;
     stream.write_all(b"Hello").await?;
 
@@ -48,12 +42,4 @@ fn display_code(socket: &UdpSocket) -> Result<u16> {
     ui::terminal::print_code(&code)?;
 
     Ok(pass)
-}
-
-// This function only used for testing.
-fn temp(socket: &UdpSocket) -> Result<String>{
-    let port = socket.local_addr()?.port();
-    let pass = utils::rand_range(0, 255);
-
-    Ok(utils::encode(port, pass))
 }

@@ -53,7 +53,7 @@ fn send_udp_broadcast(port: u16, code: &str, retry: u8, rx: Receiver<bool>)
             return Ok(())
         }
 
-        udp_socket.send_to(code.as_bytes(), ("0.0.0.0", port))?;
+        udp_socket.send_to(code.as_bytes(), ("255.255.255.255", port))?;
     }
 
     eprintln!("Cannot establish a connection.");

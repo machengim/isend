@@ -17,8 +17,8 @@ pub fn decode(code: &str) -> Option<(u16, u16)> {
         return None;
     }
 
-    let port = hex_to_decimal(&code[..4]);
-    let pass = hex_to_decimal(&code[4..]);
+    let port = hex_to_dec(&code[..4]);
+    let pass = hex_to_dec(&code[4..]);
 
     Some((port, pass))
 }
@@ -28,7 +28,7 @@ pub fn encode(port: u16, pass: u16) -> String {
 }
 
 // Covert a hex string to a decimal, used to translate the port number.
-pub fn hex_to_decimal(s: &str) -> u16 {
+pub fn hex_to_dec(s: &str) -> u16 {
     let num = u16::from_str_radix(s, 16)
         .expect("Cannot parse port string");
     num
@@ -40,9 +40,7 @@ pub fn rand_range(min: u16, max: u16) -> u16 {
 
 // Valid hex string range: 0 ~ f. Only lower case allowed.
 pub fn validate_hex_str(s: &str) -> bool {
-    let bytes = s.as_bytes();
-
-    for c in bytes.iter(){
+    for c in s.as_bytes().iter(){
         if !(c >= &48 && c <= &57) && !(c >= &97 && c <= &102) {
             return false;
         }
@@ -68,8 +66,8 @@ mod tests {
 
     #[test]
     fn hex_to_decimal_test() {
-        assert_eq!(hex_to_decimal("f209"), 61961);
-        assert_ne!(hex_to_decimal("f209"), 61960);
+        assert_eq!(hex_to_dec("f209"), 61961);
+        assert_ne!(hex_to_dec("f209"), 61960);
     }
 
     #[test]
