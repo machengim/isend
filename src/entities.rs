@@ -1,3 +1,9 @@
+#[derive(Debug)]
+pub enum Argument {
+    S(SendArg),
+    R(RecvArg),
+}
+
 pub enum ArgType {
     Send,
     Recv,
@@ -18,7 +24,7 @@ pub struct SendArg {
 
 #[derive(Debug, Default)]
 pub struct RecvArg {
-    pub expire: u16,
+    pub retry: u8,
     pub port: u16,
     pub dir: Option<String>,
     pub code: Option<String>,
@@ -40,16 +46,15 @@ macro_rules! impl_arg_type {
     }
 }
 
-macro_rules! impl_arg_new {
-    (for $($t:ty),+) => {
-        $(impl $t {
-            pub fn new() -> Self { type T = $t; T{expire: 10, ..Default::default()} }
-        })*
-    } 
+impl_arg_type!(for SendArg, RecvArg);
+
+impl SendArg {
+    pub fn new() -> Self { SendArg{expire: 10, ..Default::default() } }
 }
 
-impl_arg_type!(for SendArg, RecvArg);
-impl_arg_new!(for SendArg, RecvArg);
+impl RecvArg {
+    pub fn new() -> Self { RecvArg{retry: 5, ..Default::default() } }
+}
 
 #[cfg(test)]
 mod tests {

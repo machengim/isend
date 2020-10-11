@@ -1,0 +1,54 @@
+name: isend
+version: "0.1"
+author: Cheng Ma <machengiam@gmail.com>
+about: Send files over LAN
+args:
+    - send:
+        short: s
+        long: send
+        about: indicate this side is the sender
+        takes_value: false
+    - receive:
+        short: r
+        long: receive
+        about: indicate this side is the receiver
+        takes_value: false
+    - port:
+        short: p
+        long: port
+        about: Sets the port number you want to use
+        takes_value: true
+    - code:
+        short: c
+        long: code
+        about: Receiver sets the code to connect to the sender
+        takes_value: true
+    - expire:
+        short: e
+        long: expire
+        about: Sender sets the minutes before the code expires
+        takes_value: true
+    - message:
+        short: m
+        long: message
+        about: Sender sets the message needed to send
+        takes_value: true
+    - dir:
+        short: d
+        long: dir
+        about: Receiver sets the directory to receive the files
+        takes_value: true
+    - overwrite:
+        long: overwrite
+        about: Receiver sets to overwrite files with same name
+        takes_value: false
+    - shutdown:
+        long: shutdown
+        about: Sets whether to shutdown the computer after task finishes
+        takes_value: false
+    - INPUT:
+        about: The files to send or the code to receive
+        multiple: true
+        required: true
+        index: 1
+        

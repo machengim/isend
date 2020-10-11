@@ -1,10 +1,11 @@
 use anyhow::Result;
-use async_std::net::UdpSocket;
+use async_std::net::{UdpSocket, TcpStream};
+use async_std::prelude::*;
 use std::net::SocketAddr;
 use std::sync::mpsc;
 use crate::{entities, ui, utils};
 
-pub async fn launch(arg: &entities::SendArg) -> Result<SocketAddr>{
+pub async fn launch(arg: &entities::SendArg) -> Result<()>{
     let socket = UdpSocket::bind(("0.0.0.0", arg.port)).await?;
     let pass = display_code(&socket)?;
 
@@ -13,8 +14,31 @@ pub async fn launch(arg: &entities::SendArg) -> Result<SocketAddr>{
 
     let dest = listen_upd(&socket, pass).await?;
     tx.send(true)?;
+    connect_tcp(&dest).await?;
 
-    Ok(dest)
+    Ok(())
+}
+
+pub async fn connect_tcp(dest: &SocketAddr) -> Result<()> {
+    let mut stream = TcpStream::connect(dest).await?;
+    stream.write_all(b"Hello").await?;
+
+    Ok(())
+}
+
+pub async fn listen_upd(socket: &UdpSocket, pass: u16) 
+    -> Result<SocketAddr> {
+
+    let mut buf = [0; 6];
+    loop {
+        let (_, addr) = socket.recv_from(&mut buf).await?;
+        let (dest_port, dest_pass) = utils::decode(std::str::from_utf8(&buf)?)
+            .expect("Cannot parse code.");
+
+        if dest_pass == pass {
+            return Ok(SocketAddr::new(addr.ip(), dest_port));
+        }
+    }
 }
 
 fn display_code(socket: &UdpSocket) -> Result<u16> {
@@ -26,15 +50,10 @@ fn display_code(socket: &UdpSocket) -> Result<u16> {
     Ok(pass)
 }
 
-async fn listen_upd(socket: &UdpSocket, pass: u16) -> Result<SocketAddr> {
-    let mut buf = [0; 6];
-    loop {
-        let (_, addr) = socket.recv_from(&mut buf).await?;
-        let (dest_port, dest_pass) = utils::decode(std::str::from_utf8(&buf)?)
-            .expect("Cannot parse code.");
+// This function only used for testing.
+fn temp(socket: &UdpSocket) -> Result<String>{
+    let port = socket.local_addr()?.port();
+    let pass = utils::rand_range(0, 255);
 
-        if dest_pass == pass {
-            return Ok(SocketAddr::new(addr.ip(), dest_port));
-        }
-    }
+    Ok(utils::encode(port, pass))
 }
