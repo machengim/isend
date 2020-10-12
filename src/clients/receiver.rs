@@ -1,11 +1,12 @@
 use anyhow::Result;
 use async_std::net::TcpListener;
 use async_std::prelude::*;
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc;
 use std::{thread, time::Duration};
 use crate::{entities, utils};
 
 pub async fn launch(arg: &entities::RecvArg) -> Result<()> {
+    println!("{:?}", arg);
     let dest_code = match &arg.code{
         Some(c) => c,
         None => panic!("Unknown code input."),
@@ -41,10 +42,10 @@ fn start_udp(dest_code: &str, tcp_port: u16, retry: u8) -> mpsc::Sender<bool> {
     tx
 }
 
-fn send_udp_broadcast(port: u16, code: &str, retry: u8, rx: Receiver<bool>)
+fn send_udp_broadcast(port: u16, code: &str, retry: u8, rx: mpsc::Receiver<bool>)
      -> Result<()> {
 
-    let udp_socket = std::net::UdpSocket::bind(("0.0.0.0", port))?;
+    let udp_socket = std::net::UdpSocket::bind("0.0.0.0:0")?;
     udp_socket.set_broadcast(true)?;
     
     for _ in 0..retry {
@@ -59,4 +60,3 @@ fn send_udp_broadcast(port: u16, code: &str, retry: u8, rx: Receiver<bool>)
     eprintln!("Cannot establish a connection.");
     std::process::exit(1);
 }
-

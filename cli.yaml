@@ -49,6 +49,5 @@ args:
     - INPUT:
         about: The files to send or the code to receive
         multiple: true
-        required: true
         index: 1
         

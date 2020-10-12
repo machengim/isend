@@ -3,11 +3,13 @@ mod clients;
 mod entities;
 mod ui;
 mod utils;
-use async_std::task::block_on;
+use entities::Argument::{S, R};
+use clients::{sender, receiver};
 
-fn main(){
+#[async_std::main]
+async fn main(){
     match cli::read_input() {
-        entities::Argument::S(s) => block_on(clients::sender::launch(&s)).unwrap(),
-        entities::Argument::R(r) => block_on(clients::receiver::launch(&r)).unwrap(),
+        S(s) => sender::launch(&s).await.unwrap(),
+        R(r) => receiver::launch(&r).await.unwrap(),
     }
 }
