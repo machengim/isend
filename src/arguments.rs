@@ -64,8 +64,8 @@ macro_rules! impl_arg_trait {
                 }
 
                 arg.parse_password(m)
-                .parse_port(m)
-                .parse_shutdown(m);
+                    .parse_port(m)
+                    .parse_shutdown(m);
 
                 arg
             }
@@ -102,6 +102,8 @@ macro_rules! impl_arg_trait {
         })*
     } 
 }
+
+impl_arg_trait!(for SendArg, RecvArg);
 
 impl SendArg {
     fn parse_receiver(&mut self, _: &ArgMatches) { /* dumb function for macro */ }
@@ -236,8 +238,6 @@ impl RecvArg {
         }
     }
 }
-
-impl_arg_trait!(for SendArg, RecvArg);
 
 // Helper function for parse_sending_files.
 // May be required by other functions in the future.

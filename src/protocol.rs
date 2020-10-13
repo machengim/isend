@@ -46,7 +46,7 @@ pub struct Instruction {
 impl Instruction {
     // The very first request from the sender.
     // Check whether a password is provided.
-    pub fn init(s: Option<String>) -> Instruction {
+    pub fn init(s: &Option<String>) -> Instruction {
         match s {
             Some(pw) => init_with_password(&pw),
             None => Instruction::default(),
@@ -84,7 +84,7 @@ impl Instruction {
             .expect("Cannot parse code");
 
         let buffer_num = u8::from_be_bytes([buf[3]]);
-        let buffer = if (buffer_num == 1) {true} else {false};
+        let buffer = if buffer_num == 1 {true} else {false};
 
         let length = u16::from_be_bytes([buf[4], buf[5]]);
 
@@ -109,7 +109,7 @@ mod test{
 
     #[test]
     fn instruction_encode_test() {
-        let ins = Instruction::init(None);
+        let ins = Instruction::init(&None);
         assert_eq!(ins.encode(), [0, 0, 0, 0, 0, 0]);
     }
 

@@ -1,19 +1,37 @@
 use anyhow::Result;
-use async_std::net::TcpListener;
+use async_std::net::{TcpListener, TcpStream};
 use async_std::prelude::*;
 use std::sync::mpsc;
 use std::{thread, time::Duration};
 use crate::{arguments, utils};
 
-pub async fn launch(arg: &arguments::RecvArg) -> Result<()> {
-    let dest_code = match &arg.code{
-        c => c,
-    };
+pub struct Receiver {
+    dir: String,
+    overwrite: arguments::OverwriteStrategy,
+    password: Option<String>,
+    stream: TcpStream,
+}
+
+impl Receiver {
+    fn new(arg: arguments::RecvArg, stream: TcpStream) -> Self {
+        Receiver {
+            dir: match arg.dir {
+                Some(dir) => dir,
+                None => String::new(),
+            },
+            overwrite: arg.overwrite,
+            password: arg.password,
+            stream,
+        }
+    }
+}
+
+pub async fn launch(arg: arguments::RecvArg) -> Result<()> {
+    let dest_code = &arg.code;
 
     let tcp_socket = TcpListener::bind(("0.0.0.0", arg.port)).await?;
     let tcp_port = tcp_socket.local_addr()?.port();
-    let retry = arg.retry;
-    let tx = start_udp(dest_code, tcp_port, retry);
+    let tx = start_udp(dest_code, tcp_port, arg.retry);
 
     let (mut stream, addr) = tcp_socket.accept().await?;
     tx.send(true)?;

@@ -3,24 +3,53 @@ use async_std::net::{UdpSocket, TcpStream};
 use async_std::prelude::*;
 use std::net::SocketAddr;
 use std::sync::mpsc;
-use crate::{arguments, ui, utils};
+use crate::{arguments, protocol, ui, utils};
 
-pub async fn launch(arg: &arguments::SendArg) -> Result<()>{
+pub struct Sender {
+    pub files: Option<Vec<String>>,
+    pub msg: Option<String>,
+    pub password: Option<String>,
+    pub stream: TcpStream,
+}
+
+impl Sender {
+    pub fn new(arg: arguments::SendArg, stream: TcpStream) -> Self {
+        Sender {
+            files: arg.files,
+            msg: arg.msg,
+            password: arg.password,
+            stream,
+        }
+    }
+
+    pub async fn connect(&mut self) -> Result<()> {
+        let ins = protocol::Instruction::init(&self.password);
+        let buf = ins.encode();
+        self.stream.write_all(&buf).await?;
+
+        Ok(())
+    }
+}
+
+pub async fn launch(arg: arguments::SendArg) -> Result<()>{
     let socket = UdpSocket::bind(("0.0.0.0", arg.port)).await?;
     let pass = display_code(&socket)?;
 
     let (tx, rx) = mpsc::channel::<bool>();
-    ui::timer::start_timer((arg.expire * 60) as u64, rx);
+    ui::timer::start_timer((&arg.expire * 60) as u64, rx);
 
     let dest = listen_upd(&socket, pass).await?;
     tx.send(true)?;
-    let mut stream = TcpStream::connect(dest).await?;
-    stream.write_all(b"Hello").await?;
+
+    let stream = TcpStream::connect(dest).await?;
+    let mut sender = Sender::new(arg, stream);
+    sender.connect().await?;
+    //stream.write_all(b"Hello").await?;
 
     Ok(())
 }
 
-pub async fn listen_upd(socket: &UdpSocket, pass: u16) 
+async fn listen_upd(socket: &UdpSocket, pass: u16) 
     -> Result<SocketAddr> {
 
     let mut buf = [0; 6];

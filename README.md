@@ -1,1 +1,3 @@
-# insta-share
+# isend
+
+Send files over LAN
