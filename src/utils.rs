@@ -1,4 +1,20 @@
 use rand::Rng;
+use std::fs;
+
+pub enum FileType{
+    File,
+    Dir,
+}
+
+pub fn check_file_type(s: &str, t: FileType) -> bool {
+    let metadata = fs::metadata(s)
+        .expect("Cannot read metadata of file");
+
+    match t {
+        FileType::File => metadata.file_type().is_file(),
+        FileType::Dir => metadata.file_type().is_dir(),
+    }
+}
 
 // Covert a decimal to a hex string.
 pub fn dec_to_hex(num: u16, length: usize) -> String {
@@ -33,6 +49,7 @@ pub fn hex_to_dec(s: &str) -> u16 {
         .expect("Cannot parse port string");
     num
 }
+
 
 pub fn rand_range(min: u16, max: u16) -> u16 {
     rand::thread_rng().gen_range(min, max)
@@ -73,5 +90,11 @@ mod tests {
     #[test]
     fn decode_test() {
         assert_eq!(decode("09f36a").unwrap(), (2547, 106));
+    }
+
+    #[test]
+    fn num_to_byte_test() {
+        let value = u16::from_be_bytes([0x2a, 0x34]);
+        assert_eq!(value, 0x2a34);
     }
 }

@@ -3,9 +3,9 @@ use async_std::net::{UdpSocket, TcpStream};
 use async_std::prelude::*;
 use std::net::SocketAddr;
 use std::sync::mpsc;
-use crate::{entities, ui, utils};
+use crate::{arguments, ui, utils};
 
-pub async fn launch(arg: &entities::SendArg) -> Result<()>{
+pub async fn launch(arg: &arguments::SendArg) -> Result<()>{
     let socket = UdpSocket::bind(("0.0.0.0", arg.port)).await?;
     let pass = display_code(&socket)?;
 

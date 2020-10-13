@@ -11,4 +11,5 @@ anyhow = "1.0.33"
 async-std = {version = "1.6.5", features = ["attributes"]}
 clap = { version = "3.0.0-beta.2", features = ["yaml"] }
 crossterm = "0.18"
+num_enum = "0.5.1"
 rand = "0.7.3"

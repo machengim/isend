@@ -13,15 +13,15 @@ args:
         long: receive
         about: indicate this side is the receiver
         takes_value: false
-    - port:
-        short: p
-        long: port
-        about: Sets the port number you want to use
-        takes_value: true
     - code:
         short: c
         long: code
         about: Receiver sets the code to connect to the sender
+        takes_value: true
+    - dir:
+        short: d
+        long: dir
+        about: Receiver sets the directory to receive the files
         takes_value: true
     - expire:
         short: e
@@ -33,15 +33,19 @@ args:
         long: message
         about: Sender sets the message needed to send
         takes_value: true
-    - dir:
-        short: d
-        long: dir
-        about: Receiver sets the directory to receive the files
-        takes_value: true
     - overwrite:
         long: overwrite
         about: Receiver sets to overwrite files with same name
         takes_value: false
+    - password:
+        short: p
+        long: password
+        about: Sets the password for this connection
+        takes_value: true
+    - port:
+        long: port
+        about: Sets the port for connection
+        takes_value: true
     - shutdown:
         long: shutdown
         about: Sets whether to shutdown the computer after task finishes

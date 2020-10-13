@@ -1,9 +1,10 @@
 mod cli;
 mod clients;
-mod entities;
+mod arguments;
+mod protocol;
 mod ui;
 mod utils;
-use entities::Argument::{S, R};
+use arguments::Argument::{S, R};
 use clients::{sender, receiver};
 
 #[async_std::main]

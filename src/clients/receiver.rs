@@ -3,13 +3,11 @@ use async_std::net::TcpListener;
 use async_std::prelude::*;
 use std::sync::mpsc;
 use std::{thread, time::Duration};
-use crate::{entities, utils};
+use crate::{arguments, utils};
 
-pub async fn launch(arg: &entities::RecvArg) -> Result<()> {
-    println!("{:?}", arg);
+pub async fn launch(arg: &arguments::RecvArg) -> Result<()> {
     let dest_code = match &arg.code{
-        Some(c) => c,
-        None => panic!("Unknown code input."),
+        c => c,
     };
 
     let tcp_socket = TcpListener::bind(("0.0.0.0", arg.port)).await?;
