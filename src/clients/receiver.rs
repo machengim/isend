@@ -1,6 +1,7 @@
 use anyhow::Result;
 use async_std::net::{TcpListener, TcpStream};
 use async_std::prelude::*;
+use async_std::task::block_on;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::{thread, time::Duration};
@@ -11,12 +12,39 @@ pub struct Receiver {
     dir: PathBuf,
     overwrite: arguments::OverwriteStrategy,
     password: Option<String>,
-    retry: u8,
-    stream: TcpStream,
+    stream: Option<TcpStream>,
 }
 
 impl Receiver {
-    pub fn new(arg: arguments::RecvArg, stream: TcpStream) -> Self {
+    pub async fn accept(arg: arguments::RecvArg, socket: &TcpListener) -> Result<Self> {
+        // TODO: should use a timer to control the time to wait for connection.
+        // The value retry is actually used for UDP broadcast.
+        let mut receiver = Receiver::new(arg, None);
+        for _ in 0..10 {
+            let (mut stream, addr) = socket.accept().await?;
+
+            let mut buf = [0u8; 6];
+            stream.read(&mut buf).await?;
+            println!("Get buffer: {:?}", &buf);
+
+            let ins = Instruction::decode(&buf);
+            receiver.stream = Some(stream);
+
+            if receiver.validate_connection(&ins) {
+                println!("Accept connection from {} ", addr);
+                return Ok(receiver);
+            } else {
+                println!("Refused connection from {}", addr);
+                // TEST RESPONSE !!
+                receiver.stream.as_ref().unwrap().write_all(&[1, 2, 3, 4, 6, 7]).await?;
+            }
+        }
+
+        eprintln!("Cannot establish a connection");
+        std::process::exit(1);
+    }
+
+    fn new(arg: arguments::RecvArg, stream: Option<TcpStream>) -> Self {
         Receiver {
             dir: match arg.dir {
                 Some(dir) => dir,
@@ -25,26 +53,37 @@ impl Receiver {
             },
             overwrite: arg.overwrite,
             password: arg.password,
-            retry: arg.retry,
             stream,
         }
     }
 
-    pub async fn accept(arg: arguments::RecvArg, socket: &TcpListener) -> Result<Self> {
-        for _ in 0..arg.retry {
-            let (mut stream, addr) = socket.accept().await?;
+    // TODO: check password before connection.
+    fn validate_connection(&self, ins: &Instruction) -> bool {
+        match ins.operation {
+            Operation::ConnWithoutPass => self.password.is_none(),
+            Operation::ConnWithPass =>  block_on(self.compare_pass(ins)).unwrap(),
+            _ => false,
+        }
+    }
 
-            let mut buf = [0u8; 6];
-            stream.read(&mut buf).await?;
-            let ins = Instruction::decode(&buf);
-            if validate_connection(&ins, &arg.password) {
-                println!("Accept connection from {} ", addr);
-                return Ok(Receiver::new(arg, stream));
-            }
+    async fn compare_pass(&self, ins: &Instruction) -> Result<bool> {
+        if self.password.is_none() {
+            return Ok(false);
         }
 
-        eprintln!("Cannot establish a connection");
-        std::process::exit(1);
+        let mut buf = vec![0u8; ins.length as usize];
+        let mut stream = match &self.stream{
+            Some(s) => s,
+            None => {
+                eprintln!("No TCP stream found");
+                std::process::exit(1);
+            }
+        };
+
+        stream.read(&mut buf).await?;
+        println!("Get buffer: {:?}", &buf);
+
+        Ok(self.password.as_ref().unwrap() == &String::from_utf8(buf).unwrap())
     }
 }
 
@@ -55,13 +94,15 @@ pub async fn launch(arg: arguments::RecvArg) -> Result<()> {
     let tcp_port = tcp_socket.local_addr()?.port();
     let tx = start_udp(dest_code, tcp_port, arg.retry);
 
-    let (mut stream, addr) = tcp_socket.accept().await?;
+    let receiver = Receiver::accept(arg, &tcp_socket).await?;
     tx.send(true)?;
 
+    /*
     let mut buf = [0u8; 6];
     let _ = stream.read(&mut buf).await?;
     let ins = Instruction::decode(&buf);
-    println!("{:?}", &ins);
+    println!("{:?}", &ins); 
+    */
     
     Ok(())
 }
@@ -100,8 +141,3 @@ fn send_udp_broadcast(port: u16, code: &str, retry: u8, rx: mpsc::Receiver<bool>
     std::process::exit(1);
 }
 
-// TODO: check password before connection.
-fn validate_connection(ins: &Instruction, password: &Option<String>) -> bool {
-
-    true
-}

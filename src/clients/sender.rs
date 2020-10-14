@@ -2,9 +2,11 @@ use anyhow::Result;
 use async_std::net::{UdpSocket, TcpStream};
 use async_std::prelude::*;
 use std::path::PathBuf;
+use std::process::exit;
 use std::net::SocketAddr;
 use std::sync::mpsc;
-use crate::{arguments, protocol, ui, utils};
+use crate::{arguments, ui, utils};
+use crate::protocol::{Instruction, Operation};
 
 pub struct Sender {
     pub files: Option<Vec<PathBuf>>,
@@ -24,9 +26,23 @@ impl Sender {
     }
 
     pub async fn connect(&mut self) -> Result<()> {
-        let ins = protocol::Instruction::init(&self.password);
+        let ins = Instruction::init(&self.password);
         let buf = ins.encode();
         self.stream.write_all(&buf).await?;
+        if let Some(password) = self.password.as_ref() {
+            let buf = password.as_bytes();
+            self.stream.write_all(buf).await?;
+        }
+
+        let mut buf = [0u8; 6];
+        self.stream.read(&mut buf).await?;
+        println!("Get response from receiver: {:?}", &buf);
+
+        match Instruction::decode(&buf).operation {
+            Operation::ConnSuccess => println!("Connection established"),
+            Operation::ConnRefuse => { eprintln!("Connection being refused"); exit(1); }
+            _ => { eprintln!("Unknow instruction received"); exit(1); }
+        }
 
         Ok(())
     }
@@ -45,7 +61,6 @@ pub async fn launch(arg: arguments::SendArg) -> Result<()>{
     let stream = TcpStream::connect(dest).await?;
     let mut sender = Sender::new(arg, stream);
     sender.connect().await?;
-    //stream.write_all(b"Hello").await?;
 
     Ok(())
 }

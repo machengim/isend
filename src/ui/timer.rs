@@ -15,8 +15,8 @@ fn run_timer(total: u64, rx: mpsc::Receiver<bool>) {
     loop {
         sleep(Duration::from_secs(1));
 
+        // Connection instruction from parent to stop timer.
         if let Ok(true) = rx.try_recv() {
-            println!("Get connection.");
             return;
         }
 
