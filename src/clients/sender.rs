@@ -1,12 +1,13 @@
 use anyhow::Result;
 use async_std::net::{UdpSocket, TcpStream};
 use async_std::prelude::*;
+use std::path::PathBuf;
 use std::net::SocketAddr;
 use std::sync::mpsc;
 use crate::{arguments, protocol, ui, utils};
 
 pub struct Sender {
-    pub files: Option<Vec<String>>,
+    pub files: Option<Vec<PathBuf>>,
     pub msg: Option<String>,
     pub password: Option<String>,
     pub stream: TcpStream,

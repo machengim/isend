@@ -41,7 +41,7 @@ args:
         short: p
         long: password
         about: Sets the password for this connection
-        takes_value: true
+        takes_value: false
     - port:
         long: port
         about: Sets the port for connection

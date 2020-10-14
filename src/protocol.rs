@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 
 #[derive(Copy, Clone, Debug, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
-pub enum Code {
+pub enum Operation {
     // Request operation code.
     ConnWithoutPass = 0,
     ConnWithPass = 1,
@@ -29,16 +29,16 @@ pub enum Code {
     AbortDir = 121,
 }
 
-impl Default for Code {
+impl Default for Operation {
     fn default() -> Self {
-        Code::ConnWithoutPass
+        Operation::ConnWithoutPass
     }
 }
 
 #[derive(Debug, Default, PartialEq)]
 pub struct Instruction {
     pub id: u16,
-    pub code: Code,
+    pub operation: Operation,
     pub buffer: bool,
     pub length: u16,
 }
@@ -62,7 +62,7 @@ impl Instruction {
             i += 1;
         }
 
-        buf[i] = (self.code as u8).to_be_bytes()[0];
+        buf[i] = (self.operation as u8).to_be_bytes()[0];
         i += 1;
 
         buf[i] = if self.buffer {1} else {0};
@@ -79,8 +79,8 @@ impl Instruction {
     pub fn decode(buf: &[u8; 6]) -> Instruction {
         let id = u16::from_be_bytes([buf[0], buf[1]]);
 
-        let code_num = u8::from_be_bytes([buf[2]]);
-        let code = Code::try_from(code_num)
+        let operation_num = u8::from_be_bytes([buf[2]]);
+        let operation = Operation::try_from(operation_num)
             .expect("Cannot parse code");
 
         let buffer_num = u8::from_be_bytes([buf[3]]);
@@ -89,7 +89,7 @@ impl Instruction {
         let length = u16::from_be_bytes([buf[4], buf[5]]);
 
         Instruction{
-            id, code, buffer, length,
+            id, operation, buffer, length,
         }
     }
 }
@@ -97,7 +97,7 @@ impl Instruction {
 fn init_with_password(pw: &str) -> Instruction {
     Instruction {
         id: 0,
-        code: Code::ConnWithPass,
+        operation: Operation::ConnWithPass,
         buffer: true,
         length: pw.len() as u16,
     }
@@ -117,7 +117,7 @@ mod test{
     fn instruction_decode_test() {
         let ins = Instruction{
             id: 2,
-            code: Code::EndConn,
+            operation: Operation::EndConn,
             buffer: true,
             length: 6
         };

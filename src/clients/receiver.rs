@@ -1,28 +1,50 @@
 use anyhow::Result;
 use async_std::net::{TcpListener, TcpStream};
 use async_std::prelude::*;
+use std::path::PathBuf;
 use std::sync::mpsc;
 use std::{thread, time::Duration};
 use crate::{arguments, utils};
+use crate::protocol::{Operation, Instruction};
 
 pub struct Receiver {
-    dir: String,
+    dir: PathBuf,
     overwrite: arguments::OverwriteStrategy,
     password: Option<String>,
+    retry: u8,
     stream: TcpStream,
 }
 
 impl Receiver {
-    fn new(arg: arguments::RecvArg, stream: TcpStream) -> Self {
+    pub fn new(arg: arguments::RecvArg, stream: TcpStream) -> Self {
         Receiver {
             dir: match arg.dir {
                 Some(dir) => dir,
-                None => String::new(),
+                None => std::env::current_dir()
+                    .expect("Cannot get current working directory"),
             },
             overwrite: arg.overwrite,
             password: arg.password,
+            retry: arg.retry,
             stream,
         }
+    }
+
+    pub async fn accept(arg: arguments::RecvArg, socket: &TcpListener) -> Result<Self> {
+        for _ in 0..arg.retry {
+            let (mut stream, addr) = socket.accept().await?;
+
+            let mut buf = [0u8; 6];
+            stream.read(&mut buf).await?;
+            let ins = Instruction::decode(&buf);
+            if validate_connection(&ins, &arg.password) {
+                println!("Accept connection from {} ", addr);
+                return Ok(Receiver::new(arg, stream));
+            }
+        }
+
+        eprintln!("Cannot establish a connection");
+        std::process::exit(1);
     }
 }
 
@@ -36,9 +58,10 @@ pub async fn launch(arg: arguments::RecvArg) -> Result<()> {
     let (mut stream, addr) = tcp_socket.accept().await?;
     tx.send(true)?;
 
-    let mut buf = [0u8; 16];
+    let mut buf = [0u8; 6];
     let _ = stream.read(&mut buf).await?;
-    println!("{:?}{:?}", &buf, &addr);
+    let ins = Instruction::decode(&buf);
+    println!("{:?}", &ins);
     
     Ok(())
 }
@@ -75,4 +98,10 @@ fn send_udp_broadcast(port: u16, code: &str, retry: u8, rx: mpsc::Receiver<bool>
 
     eprintln!("Cannot establish a connection.");
     std::process::exit(1);
+}
+
+// TODO: check password before connection.
+fn validate_connection(ins: &Instruction, password: &Option<String>) -> bool {
+
+    true
 }

@@ -1,6 +1,7 @@
 use clap::{ArgMatches, Values};
+use std::path::PathBuf;
 use std::process::exit;
-use crate::utils::{FileType, check_file_type, validate_hex_str};
+use crate::utils::validate_hex_str;
 
 #[derive(Debug)]
 pub enum Argument {
@@ -25,7 +26,7 @@ impl Default for OverwriteStrategy {
 #[derive(Debug, Default)]
 pub struct SendArg {
     pub expire: u16,
-    pub files: Option<Vec<String>>,
+    pub files: Option<Vec<PathBuf>>,
     pub msg: Option<String>,
     pub password: Option<String>,
     pub port: u16,
@@ -35,7 +36,7 @@ pub struct SendArg {
 #[derive(Debug, Default)]
 pub struct RecvArg {
     pub code: String,
-    pub dir: Option<String>,
+    pub dir: Option<PathBuf>,
     pub overwrite: OverwriteStrategy,
     pub password: Option<String>,
     pub port: u16,
@@ -67,17 +68,21 @@ macro_rules! impl_arg_trait {
                     .parse_port(m)
                     .parse_shutdown(m);
 
+                println!("{:?}", &arg);
+
                 arg
             }
 
             fn parse_password(&mut self, m: &ArgMatches) -> &mut Self {
-                if let Some(pw) = m.value_of("password") {
-                    if pw.len() > 255 {
-                        eprintln!("The password is too long");
-                        exit(1);
+                if m.occurrences_of("password") > 0 {
+                    let mut pw = String::new();
+                    println!("Please enter the password: ");
+                    std::io::stdin().read_line(&mut pw)
+                        .expect("Failed to read line");
+                    let pw_str = pw.trim();
+                    if pw_str.len() > 0 && pw_str.len() <= 255{
+                        self.password = Some(String::from(pw_str));
                     }
-
-                    self.password = Some(String::from(pw));
                 }
 
                 self
@@ -113,8 +118,6 @@ impl SendArg {
             .parse_msg(m)
             .parse_sending_files(m)
             .validate_sender();
-
-        println!("{:?}", self);
     }
 
     fn parse_expire(&mut self, m: &ArgMatches) -> &mut Self {
@@ -162,8 +165,6 @@ impl RecvArg {
             .parse_overwrite(m)
             .parse_retry(m)
             .validate_receiver();
-
-        println!("{:?}", self);
      }
 
     // To receiver, code is compulsory.
@@ -193,12 +194,13 @@ impl RecvArg {
 
     fn parse_dir(&mut self, m: &ArgMatches) -> &mut Self {
         if let Some(dir) = m.value_of("dir") {
-            if !check_file_type(dir, FileType::Dir) {
+            let path = PathBuf::from(dir);
+            if !path.is_dir() {
                 eprintln!("Invalid directory path");
                 exit(1);
             }
 
-            self.dir = Some(String::from(dir));
+            self.dir = Some(path);
         }
 
         self
@@ -241,19 +243,20 @@ impl RecvArg {
 
 // Helper function for parse_sending_files.
 // May be required by other functions in the future.
-fn parse_files(fs: &mut Values) -> Option<Vec<String>> {
+fn parse_files(fs: &mut Values) -> Option<Vec<PathBuf>> {
     if fs.len() <= 0 {
         return None;
     }
 
-    let mut files: Vec<String> = Vec::new();
-    while let Some(f) = fs.next() {
-        if !std::path::Path::new(f).exists() {
-            eprintln!("Invalid path found");
+    let mut files: Vec<_> = Vec::new();
+    while let Some(f) = fs.next() { 
+        let path = PathBuf::from(f);
+        if !path.is_dir() && !path.is_file() {
+            eprintln!("Invalid path input");
             exit(1);
         }
 
-        files.push(String::from(f));
+        files.push(path);
     }
 
     Some(files)
