@@ -388,6 +388,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "icore"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-std",
+ "num_enum",
+ "rand",
+]
+
+[[package]]
 name = "indexmap"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -410,12 +420,9 @@ dependencies = [
 name = "isend"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "async-std",
  "clap",
  "crossterm",
- "num_enum",
- "rand",
+ "icore",
 ]
 
 [[package]]
