@@ -9,7 +9,7 @@ pub enum Argument {
     R(RecvArg),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum OverwriteStrategy{
     Ask,
     Rename,

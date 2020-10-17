@@ -67,7 +67,6 @@ pub async fn launch(arg: arguments::SendArg) -> Result<()>{
 
 async fn listen_upd(socket: &UdpSocket, pass: u16) 
     -> Result<SocketAddr> {
-
     let mut buf = [0; 6];
     loop {
         let (_, addr) = socket.recv_from(&mut buf).await?;
