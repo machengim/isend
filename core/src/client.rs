@@ -67,7 +67,7 @@ impl Sender {
 }
 
 impl Receiver {
-    pub async fn launch(arg: &arg::RecvArg) -> Result<()>{
+    pub async fn launch(arg: arg::RecvArg) -> Result<()>{
         let (udp_port, udp_pass) = parse_code(&arg.code)?;
 
         let tcp_socket = TcpListener::bind(("0.0.0.0", arg.port)).await?;
@@ -81,7 +81,7 @@ impl Receiver {
             } 
         });
         let stream = listen_tcp(&tcp_socket, arg.password.as_ref()).await?;
-        let receiver = Receiver::new(arg, stream);
+        let receiver = Receiver::new(&arg, stream);
         tx.send(true)?;
 
         Ok(())
