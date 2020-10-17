@@ -1,3 +1,4 @@
+use anyhow::Result;
 use std::convert::TryFrom;
 
 #[derive(Clone, Copy)]
@@ -55,8 +56,6 @@ impl TryFrom<u8> for Operation {
             _ => Err("Unknow operation code"),
         }
     }
-
-
 }
 
 pub struct Instruction {
@@ -90,21 +89,20 @@ impl Instruction {
         buf
     }
 
-    pub fn decode(buf: &[u8; 6]) -> Instruction {
+    pub fn decode(buf: &[u8; 6]) -> Result<Self, &str> {
         let id = u16::from_be_bytes([buf[0], buf[1]]);
 
         let operation_num = u8::from_be_bytes([buf[2]]);
-        let operation = Operation::try_from(operation_num)
-            .expect("Cannot parse code");
+        let operation = Operation::try_from(operation_num)?;
 
         let buffer_num = u8::from_be_bytes([buf[3]]);
         let buffer = if buffer_num == 1 {true} else {false};
 
         let length = u16::from_be_bytes([buf[4], buf[5]]);
 
-        Instruction{
+        Ok(Instruction{
             id, operation, buffer, length,
-        }
+        })
     }
 
     pub fn conn_without_pass(id: u16) -> Instruction {

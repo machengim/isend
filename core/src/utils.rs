@@ -10,10 +10,6 @@ pub fn dec_to_hex(num: u16, length: usize) -> String {
     hex_str
 }
 
-pub fn encode(port: u16, pass: u16) -> String {
-    format!("{}{}", dec_to_hex(port, 4), dec_to_hex(pass, 2))
-}
-
 // Covert a hex string to a decimal, used to translate the port number.
 pub fn hex_to_dec(s: &str) -> u16 {
     let num = u16::from_str_radix(s, 16)
@@ -21,8 +17,7 @@ pub fn hex_to_dec(s: &str) -> u16 {
     num
 }
 
-
-pub fn rand_range(min: u16, max: u16) -> u16 {
+pub fn rand_range(min: u8, max: u8) -> u8 {
     rand::thread_rng().gen_range(min, max)
 }
 

@@ -5,7 +5,7 @@ pub enum Arg {
     R(RecvArg),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum OverwriteStrategy {
     Ask,
     Rename,
@@ -33,7 +33,7 @@ pub struct SendArg {
 pub struct RecvArg {
     pub code: String,
     pub expire: u8,
-    pub dir: Option<PathBuf>,
+    pub dir: PathBuf,
     pub overwrite: OverwriteStrategy,
     pub password: Option<String>,
     pub port: u16,

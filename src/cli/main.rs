@@ -1,13 +1,19 @@
+mod parser;
+
 use anyhow::Result;
-use async_std;
-use icore::args::{SendArg, RecvArg};
-use icore::sender;
+use clap::{App, load_yaml};
+use icore::arg::Arg;
+use icore::client::{Sender, Receiver};
 
 #[async_std::main]
 async fn main() -> Result<()> {
-    let send_arg = SendArg::default();
-    println!("{:?}", send_arg);
-    sender::launch(send_arg).await?;
+    let yaml = load_yaml!("cli.yaml");
+    let m = App::from(yaml).get_matches();
+
+    match parser::parse_input(&m)? {
+        Arg::S(send_arg) => Sender::launch(send_arg).await?,
+        Arg::R(recv_arg) => Receiver::launch(recv_arg).await?,
+    }
 
     Ok(())
 }
