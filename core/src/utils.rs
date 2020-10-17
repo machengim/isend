@@ -10,19 +10,6 @@ pub fn dec_to_hex(num: u16, length: usize) -> String {
     hex_str
 }
 
-// Convert a 6 char string to a tupe of port and password.
-pub fn decode(code: &str) -> Option<(u16, u16)> {
-    if code.len() != 6 || !validate_hex_str(code) {
-        println!("Invalid code string: {}", code);
-        return None;
-    }
-
-    let port = hex_to_dec(&code[..4]);
-    let pass = hex_to_dec(&code[4..]);
-
-    Some((port, pass))
-}
-
 pub fn encode(port: u16, pass: u16) -> String {
     format!("{}{}", dec_to_hex(port, 4), dec_to_hex(pass, 2))
 }
