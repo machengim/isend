@@ -19,6 +19,26 @@ impl Default for OverwriteStrategy {
     }
 }
 
+impl OverwriteStrategy {
+    pub fn ask() -> Self {
+        println!("Please choose an overwrite strategy: overwrite(o) | 
+            rename(r) | skip (s): ");
+        let mut input = String::new();
+        if let Ok(_) = std::io::stdin().read_line(&mut input) {
+            match input.trim() {
+                "o" | "O" => return OverwriteStrategy::Overwrite,
+                "r" | "R" => return OverwriteStrategy::Rename,
+                "s" | "S" => return OverwriteStrategy::Skip,
+                _ => {
+                    println!("Unknown overwrite strategy chose");
+                }
+            }
+        }
+        
+        OverwriteStrategy::Ask
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct SendArg {
     pub expire: u8,

@@ -4,8 +4,8 @@ use std::convert::TryFrom;
 #[derive(Clone, Copy, Debug)]
 pub enum Operation {
     // Request operation code.
-    ConnWithoutPass = 0,
-    ConnWithPass = 1,
+    ConnWithoutPass = 1,
+    ConnWithPass = 2,
     PreSendFile = 10,
     SendContent = 11,
     EndContent = 12,
@@ -33,8 +33,8 @@ impl TryFrom<u8> for Operation {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(Operation::ConnWithoutPass),
-            1 => Ok(Operation::ConnWithPass),
+            1 => Ok(Operation::ConnWithoutPass),
+            2 => Ok(Operation::ConnWithPass),
             10 => Ok(Operation::PreSendFile),
             11 => Ok(Operation::SendContent),
             12 => Ok(Operation::EndContent),
@@ -88,7 +88,7 @@ impl Instruction {
         buf
     }
 
-    pub fn decode(buf: &[u8; 6]) -> Result<Self> {
+    pub fn decode(buf: &Vec<u8>) -> Result<Self> {
         let id = u16::from_be_bytes([buf[0], buf[1]]);
 
         let operation_num = u8::from_be_bytes([buf[2]]);

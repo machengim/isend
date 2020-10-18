@@ -3,7 +3,7 @@ use async_std::net::{TcpListener, TcpStream, UdpSocket};
 use async_std::prelude::*;
 use async_std::task::block_on;
 use async_std::fs::{File, OpenOptions};
-use std::io::{Error, ErrorKind, Read};
+use std::io::{Error, ErrorKind};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -40,6 +40,7 @@ impl Sender {
         let mut sender = Sender::new(&arg, stream);
         sender.connect().await?;
         sender.send_files().await?;
+        sender.disconnect().await?;
     
         Ok(())
     }
@@ -98,13 +99,15 @@ impl Sender {
     }
 
     async fn send_file_one(&mut self, f: &PathBuf) -> Result<()> {
-        self.send_file_name(f).await?;
+        if let Ok(2) = self.send_file_name(f).await {
+            return Ok(())
+        }
         self.send_file_content(f).await?;
 
         Ok(())
     }
 
-    async fn send_file_name(&mut self, f: &PathBuf) -> Result<()> {
+    async fn send_file_name(&mut self, f: &PathBuf) -> Result<u8> {
         let filename = f.file_name().unwrap().to_str().unwrap();
 
         // Start sending file name.
@@ -121,7 +124,8 @@ impl Sender {
         let response = recv_ins(&mut self.stream).await?;
 
         match response.operation {
-            Operation::RequestSuccess => Ok(()),
+            Operation::RequestSuccess => Ok(1),
+            Operation::AbortFile => Ok(2),
             _ => Err(anyhow!("Wrong response got when sending file name")),
         }
     }
@@ -147,6 +151,20 @@ impl Sender {
         }
 
         let ins = Instruction{id: self.id, operation: Operation::EndContent, buffer: false, length: 0};
+        send(&mut self.stream, &ins, None).await?;
+        self.id += 1;
+
+        Ok(())
+    }
+
+    async fn disconnect(&mut self) -> Result<()> {
+        let ins = Instruction {
+            id: self.id,
+            operation: Operation::EndConn,
+            buffer: false,
+            length: 0,
+        };
+
         send(&mut self.stream, &ins, None).await?;
         self.id += 1;
 
@@ -203,13 +221,84 @@ impl Receiver {
         Ok(())
     }
 
+    // Check the file path existed in the receiver's machine
+    // and change file name if necessary.
+    fn get_valid_path(&self, orignal_path: &str) -> Result<PathBuf> {
+        let mut path = PathBuf::new();
+        let mut overwrite = self.overwrite.clone();
+        path.push(&self.dir);
+        path.push(orignal_path);
+        
+        while path.is_file() || path.is_dir() {
+            match overwrite {
+                arg::OverwriteStrategy::Ask => {
+                    overwrite = arg::OverwriteStrategy::ask();
+                },
+                arg::OverwriteStrategy::Overwrite => break,
+                arg::OverwriteStrategy::Rename => path = self.get_valid_path_seq(orignal_path),
+                // Note here none is used for skip name with same name
+                arg::OverwriteStrategy::Skip => return Err(anyhow!("Command to skip current file")),
+            }
+        }
+
+        Ok(path)
+    }
+
+    fn get_valid_path_seq(&self, orignal_path: &str) -> PathBuf {
+        let mut path = PathBuf::new();
+        path.push(&self.dir);
+        let mut i = 0;
+        path.push(format!("{}_{}", i, orignal_path));
+
+        while path.is_dir() || path.is_file() {
+            i += 1;
+            path.pop();
+            path.push(format!("{}{}", orignal_path, i));
+        }
+    
+        path
+    }
+
     // Work flow: receive instruction to create file -> Read file name ->
     // Create file -> Send success reply -> receive instruction to send file content
     // Read file content -> Receive instruction to end -> Reply success.
     async fn process_file(&mut self, ins: &Instruction) -> Result<()> {
+        let mut file = match self.process_file_name(ins).await {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("Get error when processing file name: {}", e);
+                let reply = Instruction{
+                    id: ins.id, 
+                    operation: Operation::AbortFile,
+                    buffer: false,
+                    length: 0,
+                };
+                send(&mut self.stream, &reply, None).await?;
+                return Ok(())
+            }
+        };
+
+        let mut ins: Instruction;
+        loop {
+            ins = recv_ins(&mut self.stream).await?;
+            match ins.operation {
+                Operation::SendContent => self.process_file_content(&ins, &mut file).await?,
+                Operation::EndContent => break,
+                _ => return Err(anyhow!("SKIP")),
+            }
+        }
+
+        ins = Instruction{id: ins.id, operation: Operation::RequestSuccess, buffer: false, length: 0};
+        send(&mut self.stream, &ins, None).await?;
+
+        Ok(())
+    }
+
+    async fn process_file_name(&mut self, ins: &Instruction) -> Result<File> {
         let filename_buf = recv_content(&mut self.stream, ins.length as usize).await?;
-        let filename = std::str::from_utf8(&filename_buf)?;
-        let mut file = OpenOptions::new().append(true).create(true).open(filename).await?;
+        let dest_file = std::str::from_utf8(&filename_buf)?;
+        let filename = self.get_valid_path(dest_file)?;
+        let file = OpenOptions::new().write(true).create(true).open(filename).await?;
         let ins = Instruction {
             id: ins.id,
             operation: Operation::RequestSuccess,
@@ -218,21 +307,7 @@ impl Receiver {
         };
         send(&mut self.stream, &ins, None).await?;
 
-        let mut ins: Instruction;
-
-        loop {
-            ins = recv_ins(&mut self.stream).await?;
-            match ins.operation {
-                Operation::SendContent => self.process_file_content(&ins, &mut file).await?,
-                Operation::EndContent => break,
-                _ => return Err(anyhow!("Error when reading file content")),
-            }
-        }
-
-        let ins = Instruction{id: ins.id, operation: Operation::RequestSuccess, buffer: false, length: 0};
-        send(&mut self.stream, &ins, None).await?;
-
-        Ok(())
+        Ok(file)
     }
 
     async fn process_file_content(&mut self, ins: &Instruction, file: &mut File)
@@ -299,29 +374,31 @@ fn parse_code(code: &str) -> Result<(u16, u8)> {
 async fn send(stream: &mut TcpStream, ins: &Instruction,
     content: Option<Box<&[u8]>>) -> Result<()> {
 
-    println!("Sending {:?}", ins);
+    //println!("Sending {:?}", ins);
     let buf = ins.encode();
     stream.write_all(&buf).await?;
 
     if let Some(s) = content {
         stream.write_all(&s).await?;
+        //stream.flush().await?;
     }
 
     Ok(())
 }
 
 async fn recv_ins(stream: &mut TcpStream) -> Result<Instruction> {
-    let mut buf = [0u8; 6];
-    stream.read(&mut buf).await?;
+    let mut buf = Vec::with_capacity(6);
+    stream.by_ref().take(6).read_to_end(&mut buf).await?;
     let ins = Instruction::decode(&buf)?;
-    println!("Get instruction {:?}", &ins);
+    //println!("Get instruction {:?}", &ins);
 
     Ok(ins)
 }
 
+// Use take().read_to_end() instead of read() as the latter causes reading problem.
 async fn recv_content(stream: &mut TcpStream, length: usize) -> Result<Vec<u8>> {
-    let mut buf = vec![0u8; length];
-    stream.read(&mut buf).await?;
+    let mut buf = Vec::with_capacity(length);
+    stream.by_ref().take(length as u64).read_to_end(&mut buf).await?;
 
     Ok(buf)
 }

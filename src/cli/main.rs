@@ -1,25 +1,27 @@
 mod parser;
-
-use anyhow::Result;
 use clap::{App, load_yaml};
 use icore::arg::Arg;
 use icore::client::{Sender, Receiver};
+use std::time::{Instant, Duration};
 
 #[async_std::main]
-async fn main() -> Result<()> {
+async fn main() {
     let yaml = load_yaml!("cli.yaml");
     let m = App::from(yaml).get_matches();
 
-    match parser::parse_input(&m)? {
-        Arg::S(send_arg) => match Sender::launch(send_arg).await {
+    let start = Instant::now();
+
+    match parser::parse_input(&m) {
+        Ok(Arg::S(send_arg)) => match Sender::launch(send_arg).await {
             Ok(()) => {},
             Err(e) => eprint!("Error in sender: {}", e),
         },
-        Arg::R(recv_arg) => match Receiver::launch(recv_arg).await {
+        Ok(Arg::R(recv_arg)) => match Receiver::launch(recv_arg).await {
             Ok(()) => {},
             Err(e) => eprint!("Error in receiver: {}", e),
         }
+        Err(e) => eprintln!("Error in client: {}", e),
     }
 
-    Ok(())
+    println!("Task done in {} seconds", start.elapsed().as_secs() );
 }
