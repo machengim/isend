@@ -13,11 +13,11 @@ async fn main() -> Result<()> {
     match parser::parse_input(&m)? {
         Arg::S(send_arg) => match Sender::launch(send_arg).await {
             Ok(()) => {},
-            Err(e) => eprint!("{}", e),
+            Err(e) => eprint!("Error in sender: {}", e),
         },
         Arg::R(recv_arg) => match Receiver::launch(recv_arg).await {
             Ok(()) => {},
-            Err(e) => eprint!("{}", e),
+            Err(e) => eprint!("Error in receiver: {}", e),
         }
     }
 
