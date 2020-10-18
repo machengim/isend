@@ -1,15 +1,14 @@
 use anyhow::{anyhow, Result};
 use std::convert::TryFrom;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum Operation {
     // Request operation code.
     ConnWithoutPass = 0,
     ConnWithPass = 1,
     PreSendFile = 10,
-    PreSendContent = 11,
-    ContinueContent = 12,
-    EndSendFile = 13,
+    SendContent = 11,
+    EndContent = 12,
     PreSendDir = 20,
     EndSendDir = 21,
     PreSendMsg = 30,
@@ -37,9 +36,8 @@ impl TryFrom<u8> for Operation {
             0 => Ok(Operation::ConnWithoutPass),
             1 => Ok(Operation::ConnWithPass),
             10 => Ok(Operation::PreSendFile),
-            11 => Ok(Operation::PreSendContent),
-            12 => Ok(Operation::ContinueContent),
-            13 => Ok(Operation::EndSendFile),
+            11 => Ok(Operation::SendContent),
+            12 => Ok(Operation::EndContent),
             20 => Ok(Operation::PreSendDir),
             21 => Ok(Operation::EndSendDir),
             30 => Ok(Operation::PreSendMsg),
@@ -58,7 +56,7 @@ impl TryFrom<u8> for Operation {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Instruction {
     pub id: u16,
     pub operation: Operation,

@@ -54,11 +54,6 @@ mod tests {
     }
 
     #[test]
-    fn decode_test() {
-        assert_eq!(decode("09f36a").unwrap(), (2547, 106));
-    }
-
-    #[test]
     fn num_to_byte_test() {
         let value = u16::from_be_bytes([0x2a, 0x34]);
         assert_eq!(value, 0x2a34);

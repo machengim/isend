@@ -11,8 +11,14 @@ async fn main() -> Result<()> {
     let m = App::from(yaml).get_matches();
 
     match parser::parse_input(&m)? {
-        Arg::S(send_arg) => Sender::launch(send_arg).await?,
-        Arg::R(recv_arg) => Receiver::launch(recv_arg).await?,
+        Arg::S(send_arg) => match Sender::launch(send_arg).await {
+            Ok(()) => {},
+            Err(e) => eprint!("{}", e),
+        },
+        Arg::R(recv_arg) => match Receiver::launch(recv_arg).await {
+            Ok(()) => {},
+            Err(e) => eprint!("{}", e),
+        }
     }
 
     Ok(())
