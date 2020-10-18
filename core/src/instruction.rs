@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::convert::TryFrom;
 
 #[derive(Clone, Copy)]
@@ -30,7 +30,7 @@ pub enum Operation {
 }
 
 impl TryFrom<u8> for Operation {
-    type Error = &'static str;
+    type Error = anyhow::Error;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
@@ -53,11 +53,12 @@ impl TryFrom<u8> for Operation {
             120 => Ok(Operation::AbortFile),
             121 => Ok(Operation::AbortDir),
 
-            _ => Err("Unknow operation code"),
+            _ => Err(anyhow!("Unknow operation code")),
         }
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Instruction {
     pub id: u16,
     pub operation: Operation,
@@ -89,7 +90,7 @@ impl Instruction {
         buf
     }
 
-    pub fn decode(buf: &[u8; 6]) -> Result<Self, &str> {
+    pub fn decode(buf: &[u8; 6]) -> Result<Self> {
         let id = u16::from_be_bytes([buf[0], buf[1]]);
 
         let operation_num = u8::from_be_bytes([buf[2]]);
@@ -103,15 +104,6 @@ impl Instruction {
         Ok(Instruction{
             id, operation, buffer, length,
         })
-    }
-
-    pub fn conn_without_pass(id: u16) -> Instruction {
-        Instruction {
-            id,
-            operation: Operation::ConnWithoutPass,
-            buffer: false,
-            length: 0
-        }
     }
 }
 

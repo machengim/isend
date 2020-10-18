@@ -1,4 +1,3 @@
-#[macro_use]
 use anyhow::anyhow;
 use anyhow::Result;
 use clap::{ArgMatches, Values};

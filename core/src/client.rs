@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_std::net::{TcpListener, TcpStream, UdpSocket};
 use async_std::prelude::*;
 use async_std::task::block_on;
@@ -6,8 +6,9 @@ use std::io::{Error, ErrorKind};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::mpsc;
-use crate::{arg, instruction::Instruction, utils, notify};
+use crate::{arg, utils, notify};
 use crate::communication::Message;
+use crate::instruction::{Instruction, Operation};
 
 pub struct Sender {
     id: u16,
@@ -52,16 +53,29 @@ impl Sender {
     }
 
     async fn connect(&mut self) -> Result<()> {
-        let mut ins = Instruction::conn_without_pass(self.id);
-
         match &self.password {
             Some(pw) => {
+                let ins = Instruction{
+                    id: self.id, 
+                    operation: Operation::ConnWithPass,
+                    buffer: true,
+                    length: pw.len() as u16,
+                };
                 let pass = pw.clone();
-                send(&mut self.stream, &mut ins, Some(Box::new(pass.as_bytes()))).await?;
+                send(&mut self.stream, &ins, Some(Box::new(pass.as_bytes()))).await?;
             },
-            None => send(&mut self.stream, &mut ins, None).await?,
+            None => { 
+                let ins = Instruction {
+                    id: self.id,
+                    operation: Operation::ConnWithoutPass,
+                    buffer: false,
+                    length: 0,
+                };
+                send(&mut self.stream, &ins, None).await?;
+            }
         }
 
+        self.id += 1;
         Ok(())
     }
 }
@@ -101,19 +115,16 @@ async fn listen_tcp(socket: &TcpListener, pass: Option<&String>) -> Result<TcpSt
         let (mut stream, addr) = socket.accept().await?;
         println!("Get connection request from {}", addr);
 
-        let mut buf = [0u8; 6];
-        stream.read(&mut buf).await?;
+        let ins = recv_ins(&mut stream).await?;
 
-        if let Ok(ins) = Instruction::decode(&buf) {
-            if ins.buffer && ins.length > 0 && pass.is_some() {
-                let mut buf = vec![0u8; ins.length as usize];
-                stream.read(&mut buf).await?;
-                if pass.unwrap() == &String::from_utf8(buf)? {
-                    return Ok(stream);
-                }
-            } else if pass.is_none() {
+        if ins.buffer && ins.length > 0 && pass.is_some() {
+            let buf = recv_content(&mut stream, ins.length as usize).await?;
+
+            if pass.unwrap() == &String::from_utf8(buf)? {
                 return Ok(stream);
             }
+        } else if pass.is_none() {
+            return Ok(stream);
         }
     }
 }
@@ -149,15 +160,8 @@ fn parse_code(code: &str) -> Result<(u16, u8)> {
     Ok((port, pass))
 }
 
-async fn send(stream: &mut TcpStream, ins: &mut Instruction,
+async fn send(stream: &mut TcpStream, ins: &Instruction,
     content: Option<Box<&[u8]>>) -> Result<()> {
-    match &content {
-        Some(bytes) => {
-            ins.buffer = true;
-            ins.length = bytes.len() as u16;
-        },
-        None => ins.buffer = false,
-    }
 
     let buf = ins.encode();
     stream.write_all(&buf).await?;
@@ -167,6 +171,20 @@ async fn send(stream: &mut TcpStream, ins: &mut Instruction,
     }
 
     Ok(())
+}
+
+async fn recv_ins(stream: &mut TcpStream) -> Result<Instruction> {
+    let mut buf = [0u8; 6];
+    stream.read(&mut buf).await?;
+
+    Ok(Instruction::decode(&buf)?)
+}
+
+async fn recv_content(stream: &mut TcpStream, length: usize) -> Result<Vec<u8>> {
+    let mut buf = vec![0u8; length];
+    stream.read(&mut buf).await?;
+
+    Ok(buf)
 }
 
 async fn udp_broadcast(code: String, udp_port: u16, rx: mpsc::Receiver<bool>) -> Result<bool> {
