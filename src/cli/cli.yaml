@@ -13,11 +13,6 @@ args:
         long: receive
         about: indicate this side is the receiver
         takes_value: false
-    - code:
-        short: c
-        long: code
-        about: Receiver sets the code to connect to the sender
-        takes_value: true
     - dir:
         short: d
         long: dir
