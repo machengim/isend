@@ -32,7 +32,7 @@ impl Sender {
         let pass = utils::rand_range(0, 255);
     
         let code = generate_code(port, pass);
-        notify(Message::Status(code));
+        println!("Connection code: {}", code);
     
         let dest = listen_upd(&udp, pass).await?;
         let stream = TcpStream::connect(dest).await?;
@@ -40,6 +40,7 @@ impl Sender {
         let mut sender = Sender::new(&arg, stream);
         sender.connect().await?;
         sender.send_files().await?;
+        sender.send_msg().await?;
         sender.disconnect().await?;
     
         Ok(())
@@ -102,6 +103,7 @@ impl Sender {
         if let Ok(2) = self.send_file_name(f).await {
             return Ok(())
         }
+        println!("Sending file: {:?}", f);
         self.send_file_content(f).await?;
 
         Ok(())
@@ -153,6 +155,21 @@ impl Sender {
         let ins = Instruction{id: self.id, operation: Operation::EndContent, buffer: false, length: 0};
         send(&mut self.stream, &ins, None).await?;
         self.id += 1;
+
+        Ok(())
+    }
+
+    async fn send_msg(&mut self) -> Result<()> {
+        if let Some(msg) = self.msg.as_ref() {
+            let request = Instruction {
+                id: self.id,
+                operation: Operation::PreSendMsg,
+                buffer: true,
+                length: msg.len() as u16,
+            };
+
+            send(&mut self.stream, &request, Some(Box::new(msg.as_bytes()))).await?;
+        }
 
         Ok(())
     }
@@ -212,6 +229,7 @@ impl Receiver {
 
             match ins.operation{
                 Operation::PreSendFile => self.process_file(&ins).await?,
+                Operation::PreSendMsg => self.process_msg(&ins).await?,
                 Operation::EndConn => break,
                 // TODO: handle other operations
                 _ => break,
@@ -297,6 +315,7 @@ impl Receiver {
     async fn process_file_name(&mut self, ins: &Instruction) -> Result<File> {
         let filename_buf = recv_content(&mut self.stream, ins.length as usize).await?;
         let dest_file = std::str::from_utf8(&filename_buf)?;
+        println!("Receiving file: {}", &dest_file);
         let filename = self.get_valid_path(dest_file)?;
         let file = OpenOptions::new().write(true).create(true).open(filename).await?;
         let ins = Instruction {
@@ -316,6 +335,14 @@ impl Receiver {
         let length = ins.length;
         let content_buf = recv_content(&mut self.stream, length as usize).await?;
         file.write_all(&content_buf).await?;
+
+        Ok(())
+    }
+
+    async fn process_msg(&mut self, ins: &Instruction) -> Result<()> {
+        let length = ins.length;
+        let content_buf = recv_content(&mut self.stream, length as usize).await?;
+        println!("Get message: {}", String::from_utf8(content_buf)?);
 
         Ok(())
     }

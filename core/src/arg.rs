@@ -21,8 +21,7 @@ impl Default for OverwriteStrategy {
 
 impl OverwriteStrategy {
     pub fn ask() -> Self {
-        println!("Please choose an overwrite strategy: overwrite(o) | 
-            rename(r) | skip (s): ");
+        println!("Please choose an overwrite strategy: overwrite(o) | rename(r) | skip (s): ");
         let mut input = String::new();
         if let Ok(_) = std::io::stdin().read_line(&mut input) {
             match input.trim() {

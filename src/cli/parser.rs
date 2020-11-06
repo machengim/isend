@@ -89,7 +89,7 @@ fn parse_expire(m: &ArgMatches) -> u8 {
 }
 
 fn parse_msg(m: &ArgMatches) -> Option<String> {
-    match m.value_of("msg") {
+    match m.value_of("message") {
         Some(v) => Some(String::from(v)),
         None => None,
     }
