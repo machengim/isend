@@ -13,6 +13,7 @@ async-std = {version = "1.6.5", features = ["attributes"]}
 icore = {path = "./core"}
 clap = { version = "3.0.0-beta.2", features = ["yaml"] }
 crossterm = "0.18"
+rpassword = "5.0"
 
 
 [[bin]]

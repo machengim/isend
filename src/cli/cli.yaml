@@ -1,6 +1,6 @@
 name: isend
 version: "0.1"
-author: Cheng Ma <machengiam@gmail.com>
+author: Cheng <machengiam@gmail.com>
 about: Send files over LAN
 args:
     - send:

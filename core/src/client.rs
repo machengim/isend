@@ -7,8 +7,8 @@ use std::io::{Error, ErrorKind};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::mpsc;
-use crate::{arg, utils, notify};
-use crate::communication::Message;
+use crate::{arg, utils};
+use crate::message::Message;
 use crate::instruction::{Instruction, Operation};
 
 pub struct Sender {
@@ -17,16 +17,18 @@ pub struct Sender {
     msg: Option<String>,
     password: Option<String>,
     stream: TcpStream,
+    tx: mpsc::Sender<Message>,
 }
 
 pub struct Receiver {
     dir: PathBuf,
     overwrite: arg::OverwriteStrategy,
     stream: TcpStream,
+    tx: mpsc::Sender<Message>,
 }
 
 impl Sender {
-    pub async fn launch(arg: arg::SendArg) -> Result<()> {
+    pub async fn launch(arg: arg::SendArg, tx: mpsc::Sender<Message>) -> Result<()> {
         let udp = UdpSocket::bind(("0.0.0.0", arg.port)).await?;
         let port = udp.local_addr()?.port();
         let pass = utils::rand_range(0, 255);
@@ -37,7 +39,7 @@ impl Sender {
         let dest = listen_upd(&udp, pass).await?;
         let stream = TcpStream::connect(dest).await?;
     
-        let mut sender = Sender::new(&arg, stream);
+        let mut sender = Sender::new(&arg, stream, tx);
         sender.connect().await?;
         sender.send_files().await?;
         sender.send_msg().await?;
@@ -46,13 +48,14 @@ impl Sender {
         Ok(())
     }
 
-    fn new(arg: &arg::SendArg, stream: TcpStream) -> Sender{
+    fn new(arg: &arg::SendArg, stream: TcpStream, tx: mpsc::Sender<Message>) -> Sender{
         Sender {
             id: 0,
             files: arg.files.clone(),
             msg: arg.msg.clone(),
             password: arg.password.clone(),
             stream,
+            tx,
         }
     }
 
@@ -101,9 +104,12 @@ impl Sender {
 
     async fn send_file_one(&mut self, f: &PathBuf) -> Result<()> {
         if let Ok(2) = self.send_file_name(f).await {
-            return Ok(())
+            return Ok(());
         }
-        println!("Sending file: {:?}", f);
+        //println!("Sending file: {:?}", f);
+        let status = Message::Status(format!("Sending file: {:?}", f));
+        self.tx.send(status)?;
+        self.send_file_meta(f).await?;
         self.send_file_content(f).await?;
 
         Ok(())
@@ -132,9 +138,26 @@ impl Sender {
         }
     }
 
+    async fn send_file_meta(&mut self, f: &PathBuf) -> Result<()> {
+        let ins = Instruction {
+            id: self.id,
+            operation: Operation::SendMeta,
+            buffer: true,
+            length: 8,
+        };
+
+        let file_size = std::fs::metadata(f)?.len();
+        send(&mut self.stream, &ins, Some(Box::new(&file_size.to_be_bytes()))).await?;
+
+        Ok(())
+    }
+
     async fn send_file_content(&mut self, f: &PathBuf) -> Result<()> {
         let mut file = OpenOptions::new().read(true).open(f).await?;
         let chunk_size = 0x8000;    // 32k size
+        let file_size = std::fs::metadata(f)?.len();
+        let mut sent_size = 0u64;
+        let mut progress = 0u8;
         
         loop {
             let mut chunk = Vec::with_capacity(chunk_size);
@@ -150,6 +173,13 @@ impl Sender {
 
             send(&mut self.stream, &ins, Some(Box::new(&chunk))).await?;
             self.id += 1;
+
+            sent_size += length as u64;
+            let current_progress = (sent_size * 100 / file_size) as u8;
+            if current_progress > progress {
+                progress = current_progress;
+                self.tx.send(Message::Progress(progress))?;
+            }
         }
 
         let ins = Instruction{id: self.id, operation: Operation::EndContent, buffer: false, length: 0};
@@ -169,6 +199,7 @@ impl Sender {
             };
 
             send(&mut self.stream, &request, Some(Box::new(msg.as_bytes()))).await?;
+            self.id += 1;
         }
 
         Ok(())
@@ -184,13 +215,14 @@ impl Sender {
 
         send(&mut self.stream, &ins, None).await?;
         self.id += 1;
+        self.tx.send(Message::Done)?;
 
         Ok(())
     }
 }
 
 impl Receiver {
-    pub async fn launch(arg: arg::RecvArg) -> Result<()>{
+    pub async fn launch(arg: arg::RecvArg, txu: mpsc::Sender<Message>) -> Result<()>{
         let (udp_port, udp_pass) = parse_code(&arg.code)?;
 
         let tcp_socket = TcpListener::bind(("0.0.0.0", arg.port)).await?;
@@ -198,13 +230,17 @@ impl Receiver {
 
         let code = generate_code(tcp_port, udp_pass);
         let (tx, rx) = mpsc::channel::<bool>();
+        let txu2 = txu.clone();
         std::thread::spawn(move || {
             if !block_on(udp_broadcast(code, udp_port, rx)).unwrap() {
-                notify(Message::Error("Cannot connect to sender in time".to_string()));
+                if let Err(e) = txu2.send(Message::Error(format!("Cannot connect to sender in time"))) {
+                    println!("Cannot send error to main thread: {}", e);
+                    std::process::exit(1);
+                }
             } 
         });
         let stream = listen_tcp(&tcp_socket, arg.password.as_ref()).await?;
-        let mut receiver = Receiver::new(&arg, stream);
+        let mut receiver = Receiver::new(&arg, stream, txu);
         tx.send(true)?;
 
         let ins = Instruction{id: 0, operation: Operation::ConnSuccess, buffer: false, length: 0};
@@ -215,11 +251,12 @@ impl Receiver {
         Ok(())
     }
 
-    fn new(arg: &arg::RecvArg, stream: TcpStream) -> Receiver {
+    fn new(arg: &arg::RecvArg, stream: TcpStream, tx: mpsc::Sender<Message>) -> Receiver {
         Receiver {
             dir: arg.dir.clone(),
             overwrite: arg.overwrite.clone(),
             stream,
+            tx,
         }
     }
 
@@ -235,6 +272,7 @@ impl Receiver {
                 _ => break,
             }
         }
+        self.tx.send(Message::Done)?;
 
         Ok(())
     }
@@ -274,6 +312,9 @@ impl Receiver {
             path.push(format!("{}{}", orignal_path, i));
         }
     
+        self.tx.send(Message::Status(format!("File renamed as {:?}", &path)))
+            .unwrap_or(println!("Cannot send message to main thread"));
+
         path
     }
 
@@ -284,7 +325,7 @@ impl Receiver {
         let mut file = match self.process_file_name(ins).await {
             Ok(f) => f,
             Err(e) => {
-                eprintln!("Get error when processing file name: {}", e);
+                println!("{}", e);
                 let reply = Instruction{
                     id: ins.id, 
                     operation: Operation::AbortFile,
@@ -297,12 +338,26 @@ impl Receiver {
         };
 
         let mut ins: Instruction;
+        let mut file_size = 0u64;
+        let mut finished_size = 0u64;
+        let mut progress = 0u8;
+
         loop {
             ins = recv_ins(&mut self.stream).await?;
             match ins.operation {
-                Operation::SendContent => self.process_file_content(&ins, &mut file).await?,
+                Operation::SendMeta => file_size = self.process_file_size(&ins).await?,
+                Operation::SendContent => self.process_file_content(&ins, &mut file, &mut finished_size).await?,
                 Operation::EndContent => break,
-                _ => return Err(anyhow!("SKIP")),
+                _ => return Err(anyhow!("Unknown instruction in file sending")),
+            }
+
+            if file_size > 0 && finished_size > 0 {
+                let current_progress: u8 = if finished_size * 100 / file_size > 100 {100} else {(finished_size * 100 / file_size) as u8};
+
+                if current_progress as u8 > progress {
+                    progress = current_progress;
+                    self.tx.send(Message::Progress(progress))?;
+                }
             }
         }
 
@@ -329,12 +384,22 @@ impl Receiver {
         Ok(file)
     }
 
-    async fn process_file_content(&mut self, ins: &Instruction, file: &mut File)
+    async fn process_file_size(&mut self, ins: &Instruction) -> Result<u64> {
+        let buf = recv_content(&mut self.stream, ins.length as usize).await?;
+        let mut buf_arr = [0u8; 8];
+        buf_arr.clone_from_slice(&buf[..]);
+        let file_size = u64::from_be_bytes(buf_arr);
+
+        Ok(file_size)
+    }
+
+    async fn process_file_content(&mut self, ins: &Instruction, file: &mut File, finished: &mut u64) 
         -> Result<()> {
 
         let length = ins.length;
         let content_buf = recv_content(&mut self.stream, length as usize).await?;
         file.write_all(&content_buf).await?;
+        *finished += length as u64;
 
         Ok(())
     }
@@ -360,6 +425,9 @@ async fn listen_tcp(socket: &TcpListener, pass: Option<&String>) -> Result<TcpSt
 
             if pass.unwrap() == &String::from_utf8(buf)? {
                 return Ok(stream);
+            } else {
+                let ins = Instruction {id: 0, operation: Operation::ConnRefuse, buffer: false, length: 0};
+                send(&mut stream, &ins, None).await?;
             }
         } else if pass.is_none() {
             return Ok(stream);
@@ -401,13 +469,11 @@ fn parse_code(code: &str) -> Result<(u16, u8)> {
 async fn send(stream: &mut TcpStream, ins: &Instruction,
     content: Option<Box<&[u8]>>) -> Result<()> {
 
-    //println!("Sending {:?}", ins);
     let buf = ins.encode();
     stream.write_all(&buf).await?;
 
     if let Some(s) = content {
         stream.write_all(&s).await?;
-        //stream.flush().await?;
     }
 
     Ok(())
@@ -417,7 +483,6 @@ async fn recv_ins(stream: &mut TcpStream) -> Result<Instruction> {
     let mut buf = Vec::with_capacity(6);
     stream.by_ref().take(6).read_to_end(&mut buf).await?;
     let ins = Instruction::decode(&buf)?;
-    //println!("Get instruction {:?}", &ins);
 
     Ok(ins)
 }

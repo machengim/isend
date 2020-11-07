@@ -2,6 +2,7 @@ use anyhow::anyhow;
 use anyhow::Result;
 use clap::{ArgMatches, Values};
 use icore::arg::{Arg, OverwriteStrategy, SendArg, RecvArg};
+use rpassword;
 use std::path::PathBuf;
 
 pub fn parse_input(m: &ArgMatches) -> Result<Arg> {
@@ -53,13 +54,19 @@ fn parse_recv_arg(m: &ArgMatches) -> Result<Arg> {
 
 fn parse_password(m: &ArgMatches) -> Option<String> {
     if m.occurrences_of("password") > 0 {
+        /*
         let mut pw = String::new();
         println!("Please enter the password: ");
+        
         std::io::stdin().read_line(&mut pw)
             .expect("Failed to read line");
-        let pw_str = pw.trim();
-        if pw_str.len() > 0 && pw_str.len() <= 255{
-            return Some(String::from(pw_str));
+        */
+        loop {
+            let pw = rpassword::read_password_from_tty(Some("Please enter the password: ")).unwrap();
+            let pw_str = pw.trim();
+            if pw_str.len() <= 255{
+                return Some(String::from(pw_str));
+            }
         }
     }
 
