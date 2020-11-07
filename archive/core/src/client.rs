@@ -106,11 +106,13 @@ impl Sender {
         if let Ok(2) = self.send_file_name(f).await {
             return Ok(());
         }
-        //println!("Sending file: {:?}", f);
+
         let status = Message::Status(format!("Sending file: {:?}", f));
         self.tx.send(status)?;
+
         self.send_file_meta(f).await?;
         self.send_file_content(f).await?;
+        self.send_file_end().await?;
 
         Ok(())
     }
@@ -147,6 +149,7 @@ impl Sender {
         };
 
         let file_size = std::fs::metadata(f)?.len();
+        self.tx.send(Message::Status(format!("File size: {}", file_size)))?;
         send(&mut self.stream, &ins, Some(Box::new(&file_size.to_be_bytes()))).await?;
 
         Ok(())
@@ -181,10 +184,22 @@ impl Sender {
                 self.tx.send(Message::Progress(progress))?;
             }
         }
+        println!("Finish file content");
 
+        Ok(())
+    }
+
+    async fn send_file_end(&mut self) -> Result<()> {
+        println!("Send file end");
         let ins = Instruction{id: self.id, operation: Operation::EndContent, buffer: false, length: 0};
         send(&mut self.stream, &ins, None).await?;
         self.id += 1;
+
+        let response = recv_ins(&mut self.stream).await?;
+        println!("Get response: {:?}", response);
+        if response.operation != Operation::RequestSuccess {
+            return Err(anyhow!("Unknown response after sending file"));
+        }
 
         Ok(())
     }
@@ -288,7 +303,7 @@ impl Receiver {
         while path.is_file() || path.is_dir() {
             match overwrite {
                 arg::OverwriteStrategy::Ask => {
-                    overwrite = arg::OverwriteStrategy::ask();
+                    overwrite = arg::OverwriteStrategy::ask(&self.tx);
                 },
                 arg::OverwriteStrategy::Overwrite => break,
                 arg::OverwriteStrategy::Rename => path = self.get_valid_path_seq(orignal_path),
@@ -337,17 +352,18 @@ impl Receiver {
             }
         };
 
-        let mut ins: Instruction;
+        let mut ins = Instruction::default();
         let mut file_size = 0u64;
         let mut finished_size = 0u64;
         let mut progress = 0u8;
+        let mut done = false;
 
-        loop {
+        while !done {
             ins = recv_ins(&mut self.stream).await?;
             match ins.operation {
                 Operation::SendMeta => file_size = self.process_file_size(&ins).await?,
                 Operation::SendContent => self.process_file_content(&ins, &mut file, &mut finished_size).await?,
-                Operation::EndContent => break,
+                Operation::EndContent => { self.process_file_end(&ins).await?; done = true; }
                 _ => return Err(anyhow!("Unknown instruction in file sending")),
             }
 
@@ -389,6 +405,7 @@ impl Receiver {
         let mut buf_arr = [0u8; 8];
         buf_arr.clone_from_slice(&buf[..]);
         let file_size = u64::from_be_bytes(buf_arr);
+        self.tx.send(Message::Status(format!("File size: {}", file_size)))?;
 
         Ok(file_size)
     }
@@ -400,6 +417,18 @@ impl Receiver {
         let content_buf = recv_content(&mut self.stream, length as usize).await?;
         file.write_all(&content_buf).await?;
         *finished += length as u64;
+
+        Ok(())
+    }
+
+    async fn process_file_end(&mut self, ins: &Instruction) -> Result<()>{
+        let res = Instruction {
+            id: ins.id,
+            operation: Operation::RequestSuccess,
+            ..Default::default()
+        };
+
+        send(&mut self.stream, &res, None).await?;
 
         Ok(())
     }

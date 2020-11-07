@@ -5,3 +5,8 @@
 
 **/*.class
 **/pgdata
+
+
+# Added by cargo
+
+/target

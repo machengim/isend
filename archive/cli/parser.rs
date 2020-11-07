@@ -1,8 +1,9 @@
-use anyhow::{anyhow, Result};
+use anyhow::anyhow;
+use anyhow::Result;
 use clap::{ArgMatches, Values};
+use icore::arg::{Arg, OverwriteStrategy, SendArg, RecvArg};
 use rpassword;
 use std::path::PathBuf;
-use crate::icore::arg::{Arg, OverwriteStrategy, SendArg, RecvArg};
 
 pub fn parse_input(m: &ArgMatches) -> Result<Arg> {
     let arg = match (m.occurrences_of("send"), m.occurrences_of("receive")) {
@@ -20,6 +21,8 @@ fn parse_send_arg(m: &ArgMatches) -> Result<Arg> {
         files: parse_sending_files(m),
         msg: parse_msg(m),
         password: parse_password(m),
+        port: parse_port(m),
+        shutdown: parse_shutdown(m),
     };
 
     if send_arg.msg.is_some() || send_arg.files.is_some() {
@@ -42,6 +45,8 @@ fn parse_recv_arg(m: &ArgMatches) -> Result<Arg> {
         expire: parse_expire(m),
         overwrite: parse_overwrite(m),
         password: parse_password(m),
+        port: parse_port(m),
+        shutdown: parse_shutdown(m),
     };
 
     Ok(Arg::R(recv_arg))
@@ -49,13 +54,18 @@ fn parse_recv_arg(m: &ArgMatches) -> Result<Arg> {
 
 fn parse_password(m: &ArgMatches) -> Option<String> {
     if m.occurrences_of("password") > 0 {
+        /*
+        let mut pw = String::new();
+        println!("Please enter the password: ");
+        
+        std::io::stdin().read_line(&mut pw)
+            .expect("Failed to read line");
+        */
         loop {
             let pw = rpassword::read_password_from_tty(Some("Please enter the password: ")).unwrap();
             let pw_str = pw.trim();
-            if pw_str.len() > 0 && pw_str.len() <= 255{
+            if pw_str.len() <= 255{
                 return Some(String::from(pw_str));
-            } else {
-                println!("Invalid password length");
             }
         }
     }
@@ -63,18 +73,26 @@ fn parse_password(m: &ArgMatches) -> Option<String> {
     None
 }
 
-fn parse_expire(m: &ArgMatches) -> u8 {
-    if let Some(e) = m.value_of("expire") {
-        match e.parse() {
-            Ok(e_num) => return e_num,
-            Err(_) => {
-                eprintln!("Invalid expire number. Should be in range 1 to 255");
-            } 
-        }
+fn parse_port(m: &ArgMatches) -> u16 {
+    match m.value_of("port") {
+        Some(p) => p.parse().expect("Cannot parse port number"),
+        None => 0,
+    }
+}
+
+fn parse_shutdown(m: &ArgMatches) -> bool {
+    if m.occurrences_of("shutdown") > 0 {
+        return true;
     }
 
-    // Test use: default expire time 1 minute.
-    1
+    false
+}
+
+fn parse_expire(m: &ArgMatches) -> u8 {
+    match m.value_of("expire") {
+        Some(e) => e.parse().expect("Cannot parse expire minutes"),
+        None => 0
+    }
 }
 
 fn parse_msg(m: &ArgMatches) -> Option<String> {
@@ -106,26 +124,20 @@ fn parse_files(fs: &mut Values) -> Option<Vec<PathBuf>> {
     if files.len() > 0 { Some(files) } else { None }
 }
 
-fn parse_code(m: &ArgMatches) -> Result<u16> {
+fn parse_code(m: &ArgMatches) -> Result<String> {
     match m.values_of("INPUT") {
         Some(mut inputs) => parse_code_from_inputs(&mut inputs),
         None => Err(anyhow!("No code input")),
     }
 }
 
-fn parse_code_from_inputs(inputs: &mut Values) -> Result<u16> {
+fn parse_code_from_inputs(inputs: &mut Values) -> Result<String> {
     if inputs.len() != 1 {
         return Err(anyhow!("Only one code input allowed"));
     }
 
     match inputs.next() {
-        Some(v) => {
-            match u16::from_str_radix(v, 10) {
-                Ok(port) => Ok(port),
-                Err(_) => Err(anyhow!("Invalid code format")),
-            }
-            
-        }
+        Some(v) => Ok(String::from(v)),
         None => Err(anyhow!("Error parsing code from input")),
     }
 }

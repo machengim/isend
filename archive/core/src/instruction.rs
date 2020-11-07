@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use std::convert::TryFrom;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Operation {
     // Request operation code.
     ConnWithoutPass = 1,
@@ -27,6 +27,12 @@ pub enum Operation {
     RequestFail = 112,
     AbortFile = 120,
     AbortDir = 121,
+}
+
+impl Default for Operation {
+    fn default() -> Self {
+        Operation::ConnWithoutPass
+    }
 }
 
 impl TryFrom<u8> for Operation {
@@ -58,7 +64,7 @@ impl TryFrom<u8> for Operation {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Instruction {
     pub id: u16,
     pub operation: Operation,

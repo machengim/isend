@@ -13,6 +13,23 @@ pub enum OverwriteStrategy {
     Skip,
 }
 
+#[derive(Debug, Default)]
+pub struct SendArg {
+    pub expire: u8,
+    pub files: Option<Vec<PathBuf>>,
+    pub msg: Option<String>,
+    pub password: Option<String>,
+}
+
+#[derive(Debug, Default)]
+pub struct RecvArg {
+    pub expire: u8,
+    pub dir: PathBuf,
+    pub overwrite: OverwriteStrategy,
+    pub password: Option<String>,
+    pub code: u16,  // Actually this is the port number
+}
+
 impl Default for OverwriteStrategy {
     fn default() -> Self {
         OverwriteStrategy::Ask
@@ -20,8 +37,9 @@ impl Default for OverwriteStrategy {
 }
 
 impl OverwriteStrategy {
+    // Ask the user for an overwrite strategy. Default is "ask".
     pub fn ask() -> Self {
-        println!("Please choose an overwrite strategy: overwrite(o) | rename(r) | skip (s): ");
+        println!("Please choose: overwrite(o) | rename(r) | skip (s): ");
         let mut input = String::new();
         if let Ok(_) = std::io::stdin().read_line(&mut input) {
             match input.trim() {
@@ -38,23 +56,3 @@ impl OverwriteStrategy {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct SendArg {
-    pub expire: u8,
-    pub files: Option<Vec<PathBuf>>,
-    pub msg: Option<String>,
-    pub password: Option<String>,
-    pub port: u16,
-    pub shutdown: bool,
-}
-
-#[derive(Debug, Default)]
-pub struct RecvArg {
-    pub code: String,
-    pub expire: u8,
-    pub dir: PathBuf,
-    pub overwrite: OverwriteStrategy,
-    pub password: Option<String>,
-    pub port: u16,
-    pub shutdown: bool,
-}
