@@ -37,7 +37,8 @@ impl Default for OverwriteStrategy {
 }
 
 impl OverwriteStrategy {
-    // Ask the user for an overwrite strategy. Default is "ask".
+    // Ask the user for an overwrite strategy.
+    // Note that 'ask' is not in the options but still used as default.
     pub fn ask() -> Self {
         println!("Please choose: overwrite(o) | rename(r) | skip (s): ");
         let mut input = String::new();
