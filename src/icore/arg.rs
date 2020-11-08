@@ -1,3 +1,4 @@
+use super::message::{Message, send_msg, send_prompt};
 use std::path::PathBuf;
 
 pub enum Arg {
@@ -40,16 +41,19 @@ impl OverwriteStrategy {
     // Ask the user for an overwrite strategy.
     // Note that 'ask' is not in the options but still used as default.
     pub fn ask() -> Self {
-        println!("Please choose: overwrite(o) | rename(r) | skip (s): ");
-        let mut input = String::new();
-        if let Ok(_) = std::io::stdin().read_line(&mut input) {
-            match input.trim() {
-                "o" | "O" => return OverwriteStrategy::Overwrite,
-                "r" | "R" => return OverwriteStrategy::Rename,
-                "s" | "S" => return OverwriteStrategy::Skip,
-                _ => {
-                    println!("Unknown overwrite strategy chose");
-                }
+        //println!("Please choose: overwrite(o) | rename(r) | skip (s): ");
+        //let mut input = String::new();
+        //if let Ok(_) = std::io::stdin().read_line(&mut input) {
+        let input = send_prompt(Message::Prompt(
+            "Please choose: overwrite(o) | rename(r) | skip (s): ".to_string()));
+
+        match input.trim() {
+            "o" | "O" => return OverwriteStrategy::Overwrite,
+            "r" | "R" => return OverwriteStrategy::Rename,
+            "s" | "S" => return OverwriteStrategy::Skip,
+            _ => {
+                //println!("Unknown overwrite strategy chose");
+                send_msg(Message::Status(format!("Unknown overwrite strategy chose")));
             }
         }
         

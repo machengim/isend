@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use super::arg::SendArg;
 use super::instruction::{Instruction, Operation};
+use super::message::{Message, send_msg};
 use super::utils;
 
 lazy_static::lazy_static! {
@@ -18,7 +19,8 @@ lazy_static::lazy_static! {
 pub async fn launch(arg: SendArg) -> Result<()> {    
     let udp = UdpSocket::bind(("0.0.0.0", 0)).await?;
     let port = udp.local_addr()?.port();
-    println!("Connection code: {}", port);
+    //println!("Connection code: {}", port);
+    send_msg(Message::Status(format!("Connection code: {}", port)));
     listen_udp(&udp, arg.expire, arg.password.as_ref()).await?;
 
     Ok(())
@@ -73,13 +75,15 @@ async fn try_connect_tcp(socket: &SocketAddr, password: Option<&String>)
         },
         Operation::ConnRefuse => {
             let detail = utils::recv_content(&mut stream, response.length as usize).await?;
-            println!("Connection refused: {}", String::from_utf8(detail)?);
+            //println!("Connection refused: {}", String::from_utf8(detail)?);
+            send_msg(Message::Error(format!("Connection refused: {}", String::from_utf8(detail)?)));
             // Add this socket to black list if connection being refused to avoid future attemp.
             BLACK_LIST.lock().unwrap().push(*socket);
         },
         Operation::ConnError => { 
             let detail = utils::recv_content(&mut stream, response.length as usize).await?;
-            println!("Error when connecting: {}", String::from_utf8(detail)?);
+            //println!("Error when connecting: {}", String::from_utf8(detail)?);
+            send_msg(Message::Error(format!("in connection: {}", String::from_utf8(detail)?)))
         },
         _ =>  println!("Unknow instruction in reponse"),
     }

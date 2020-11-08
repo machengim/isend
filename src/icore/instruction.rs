@@ -1,6 +1,7 @@
 use anyhow::Result;
 use num_enum::TryFromPrimitive;
 use std::convert::TryFrom;
+use super::message::{Message, send_msg};
 
 pub const INS_SIZE: usize = 8;
 
@@ -70,7 +71,7 @@ impl Instruction {
     // Decode a vector of u8 to an instruction
     pub fn decode(buf: &Vec<u8>) -> Result<Self> {
         if buf.len() != INS_SIZE {
-            panic!("Unknown instruction format");
+            send_msg(Message::Fatal(format!("Unknown instruction format")));
         }
 
         let id = u16::from_be_bytes([buf[0], buf[1]]);
