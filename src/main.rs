@@ -9,7 +9,7 @@ use icore::{message::send_msg, message::Message, receiver, sender};
 #[async_std::main]
 async fn main() {
     // Init communication between UI and model.
-    typer::init_channel();
+    typer::launch();
 
     // Init logger. No need to terminate process if error happens.
     // TODO: logger should be turned off in release.

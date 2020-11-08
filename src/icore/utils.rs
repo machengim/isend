@@ -53,3 +53,12 @@ pub async fn recv_content(stream: &mut TcpStream, length: usize) -> Result<Vec<u
 
     Ok(buf)
 }
+
+// Used to increment id by 1. If it reaches the boundary, start from 0.
+pub fn inc_one_u16(id: u16) -> u16 {
+    if id == std::u16::MAX {
+        0
+    } else {
+        id + 1
+    }
+}

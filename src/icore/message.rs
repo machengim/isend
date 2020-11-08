@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use log::{debug, info};
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::Mutex;
+use std::sync::{mpsc, Mutex, MutexGuard};
 
 #[derive(Clone, Debug)]
 pub enum Message {
@@ -20,14 +20,20 @@ pub struct MsgPipe {
     tx: Sender<Message>,
 }
 
+// Init a fake MsgPipe.
 lazy_static::lazy_static!{
-    static ref PIPE: Mutex<Option<MsgPipe>> = Mutex::new(None); 
+    static ref PIPE: Mutex<MsgPipe> = {
+        let (_, rx) = mpsc::channel();
+        let (tx, _) = mpsc::channel();
+
+        Mutex::new(MsgPipe{rx, tx})
+    };
 }
 
 // This function should be invoked by typer to register the channels.
-pub fn init_msg_pipe(rx: Receiver<String>, tx: Sender<Message>) {
+pub fn launch(rx: Receiver<String>, tx: Sender<Message>) {
     let mut pipe = PIPE.lock().unwrap();
-    *pipe = Some(MsgPipe{rx, tx});
+    *pipe = MsgPipe{rx, tx};
     debug!("Message pipe created");
 }
 
@@ -35,17 +41,14 @@ pub fn init_msg_pipe(rx: Receiver<String>, tx: Sender<Message>) {
 // The errors should be handled here since no other way to display them.
 pub fn send_msg(msg: Message) {
     let pipe = PIPE.lock().unwrap();
-    if pipe.is_none() {
-        eprintln!("Fatal Error: message pipe is not initialized");
-        std::process::exit(1);
-    }
+    let tx = &pipe.tx;
 
-    let tx = &pipe.as_ref().unwrap().tx;
     if let Err(e) = tx.send(msg) {
         eprintln!("Cannot send message to UI: {}", e);
     }
 }
 
+// Send prompt message to stdout and requires user input.
 pub fn send_prompt(msg: Message) -> String {
     if let Message::Prompt(_) = msg.clone() {
         send_msg(msg);
@@ -53,18 +56,17 @@ pub fn send_prompt(msg: Message) -> String {
             Ok(s) => return s,
             Err(e) => send_msg(Message::Error(format!("in receiving user input: {}", e))),
         }
+    } else {
+        send_msg(Message::Error(format!("wrong format in sending prompt")));
     }
 
     String::new()
 }
 
+// Receive user input.
 fn recv_input() -> Result<String> {
     let pipe = PIPE.lock().unwrap();
-    if pipe.is_none() {
-        eprintln!("Fatal Error: message pipe is not initialized");
-        std::process::exit(1);
-    }
+    let rx = &pipe.rx;
 
-    let rx = &pipe.as_ref().unwrap().rx;
     Ok(rx.recv()?)
 }

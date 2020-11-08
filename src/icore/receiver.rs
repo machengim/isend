@@ -4,6 +4,7 @@ use log::{info, debug};
 use std::sync::mpsc;
 use super::arg::RecvArg;
 use super::instruction::{Instruction, Operation};
+use super::message::{self, Message};
 use super::utils;
 
 pub async fn launch(arg: RecvArg) -> Result<()> {
@@ -25,6 +26,8 @@ pub async fn launch(arg: RecvArg) -> Result<()> {
     let mut stream = listen_tcp_conn(&tcp_socket, arg.password.as_ref()).await?;
     tx.send(true)?;
 
+    start_working(&mut stream).await?;
+
     Ok(())
 }
 
@@ -37,7 +40,7 @@ async fn broadcast_udp(local_port: u16, target_port: u16, rx: mpsc::Receiver<boo
 
     for _ in 0..10 {
         udp_socket.send_to(&u16::to_be_bytes(local_port), ("255.255.255.255", target_port)).await?;
-        //debug!("UDP broadcast sent to port {}", target_port);
+        debug!("UDP broadcast sent to port {}", target_port);
         async_std::task::sleep(std::time::Duration::from_secs(5)).await;
 
         // Check message in channel
@@ -62,20 +65,19 @@ async fn listen_tcp_conn(socket: &TcpListener, password: Option<&String>) -> Res
             Operation::Connect => {
                 match valiate_tcp_conn(&mut stream, &ins, password).await {
                     Ok(true) => {
-                        println!("Connection established");
-                        // reply
                         utils::send_ins(&mut stream, 0, Operation::ConnSuccess, None).await?;
+                        message::send_msg(Message::Status(format!("Connection established")));
                         return Ok(stream);
                     },
                     Ok(false) => {
                         let reply = format!("Invalid password");
-                        println!("{}", reply);
                         utils::send_ins(&mut stream, 0, Operation::ConnRefuse, Some(&reply)).await?;
+                        message::send_msg(Message::Status(reply));
                     }
                     Err(e) => {
                         let reply = format!("Get error when validating tcp connection: {}", e);
-                        println!("{}", reply);
                         utils::send_ins(&mut stream, 0, Operation::ConnRefuse, Some(&reply)).await?;
+                        message::send_msg(Message::Status(reply));
                     }
                 }
             },
@@ -108,4 +110,29 @@ async fn compare_pass(stream: &mut TcpStream, ins: &Instruction, password: &Stri
     debug!("Local password: {}, remote password: {}", password, req_pass);
 
     Ok(&req_pass == password)
+}
+
+async fn start_working(stream: &mut TcpStream) -> Result<()> {
+    let mut id = 0u16;
+
+    loop {
+        let ins = utils::recv_ins(stream).await?;
+        
+        match ins.operation {
+            Operation::EndConn => {id = ins.id; break; },
+            _ => return Err(anyhow!("Unknown request instruction")),
+        }
+    }
+
+    shutdown(stream, id).await?;
+
+    Ok(())
+}
+
+async fn shutdown(stream: &mut TcpStream, id: u16) -> Result<()> {
+    utils::send_ins(stream, id, Operation::RequestSuccess, None).await?;
+    //stream.shutdown(std::net::Shutdown::Both)?;
+    message::send_msg(Message::Done);
+
+    Ok(())
 }
