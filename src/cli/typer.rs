@@ -4,6 +4,12 @@ use std::sync::mpsc::{self, Sender, Receiver};
 use std::sync::Mutex;
 use crate::icore::message::{self, Message};
 
+enum LineType {
+    Progress,
+    Text,
+    Time,
+}
+
 pub struct Typer {
     rx: Receiver<Message>,
     tx: Sender<String>,
@@ -40,32 +46,37 @@ fn listen_msg() {
 
     let rx = &typer.as_ref().unwrap().rx;
     loop {
-        debug!("Listen msg loop starts..");
         match rx.recv() {
-            Ok(Message::Done)=> {break;},
+            Ok(Message::Done)=> print_done(),
             Ok(Message::Status(s)) => {print_status(&s);},
             Ok(Message::Progress(p)) => {},
             Ok(Message::Error(e)) => {print_error(&e);},
             Ok(Message::Fatal(f)) => {print_fatal(&f);}
             Ok(Message::Prompt(p)) => {},
+            Ok(Message::Time(t)) => print_time(t),
             Err(e) => eprintln!("{}", e),
         }
     }
 }
 
+fn print_done() {
+    println!("Task done");
+    std::process::exit(0);
+}
 
-
-fn print_error(msg: &String) {
-    eprintln!("Error: {}", msg);
+fn print_error(e: &String) {
+    eprintln!("Error: {}", e);
 }
 
 // Notice that fatal error will terminate the whole process.
-fn print_fatal(msg: &String) {
-    eprintln!("Fatal Error: {}", msg);
+fn print_fatal(f: &String) {
+    eprintln!("Fatal Error: {}", f);
     std::process::exit(1);
 }
 
-fn print_prompt(msg: &String) {
+// Ask the user to input and send the result to the channel.
+fn print_prompt(p: &String) {
+    println!("{}", p);
     let mut input = String::new();
     if let Err(e) = std::io::stdin().read_line(&mut input) {
         print_error(&format!("when reading input: {}", e));
@@ -82,6 +93,11 @@ fn print_prompt(msg: &String) {
     }
 }
 
-fn print_status(msg: &String) {
-    println!("{}", msg);
+fn print_status(s: &String) {
+    println!("{}", s);
+}
+
+fn print_time(t: u64) {
+    let time_str = format!("{}:{}", t / 60, t % 60);
+    println!("Time left: {}", time_str);
 }

@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use async_std::net::{UdpSocket, TcpStream};
 use log::{debug, info};
 use std::net::SocketAddr;
-use std::sync::Mutex;
+use std::sync::{mpsc, Mutex};
 use std::time::{Duration, Instant};
 use super::arg::SendArg;
 use super::instruction::{Instruction, Operation};
@@ -16,19 +16,29 @@ lazy_static::lazy_static! {
 // Entry function of Sender.
 // Bind on a UDP socket, listen incoming UDP connection,
 // get the target TCP port.
+// After expire time the whole process will be terminated.
 pub async fn launch(arg: SendArg) -> Result<()> {    
     let udp = UdpSocket::bind(("0.0.0.0", 0)).await?;
     let port = udp.local_addr()?.port();
-    //println!("Connection code: {}", port);
     send_msg(Message::Status(format!("Connection code: {}", port)));
-    listen_udp(&udp, arg.expire, arg.password.as_ref()).await?;
+
+    // Start timer.
+    let (tx, rx) = mpsc::channel();
+    let expire = arg.expire.clone();
+    async_std::task::spawn(async move {
+        timer(expire, rx).await;
+    });
+
+    // Stop timer after getting stream.
+    let password = arg.password.clone();
+    let stream = listen_udp(&udp, expire, password.as_ref()).await?;
+    tx.send(true)?;
 
     Ok(())
 }
 
 // Listen UDP socket, until a connection comes with a valid port number,
 // assume it's the TCP port of the receiver.
-// TODO: return stream after successful connection.
 async fn listen_udp(udp: &UdpSocket, expire: u8, password: Option<&String>) -> Result<TcpStream>{
     let mut buf = [0; 2];
     let start = Instant::now();
@@ -60,7 +70,6 @@ async fn listen_udp(udp: &UdpSocket, expire: u8, password: Option<&String>) -> R
 // Try to connect to the target machine after receiving its connection request.
 // Only run once for a connection request.
 // Needs reply from receiver to continue next step.
-// TODO: return stream.
 async fn try_connect_tcp(socket: &SocketAddr, password: Option<&String>) 
     -> Result<Option<TcpStream>> {
     
@@ -89,4 +98,20 @@ async fn try_connect_tcp(socket: &SocketAddr, password: Option<&String>)
     }
 
     Ok(None)
+}
+
+async fn timer(expire: u8, rx: mpsc::Receiver<bool>) {
+    let start = Instant::now();
+
+    while start.elapsed().as_secs() < (expire * 60) as u64 {
+        let t = (expire * 60) as u64 - start.elapsed().as_secs();
+        send_msg(Message::Time(t));
+        
+        async_std::task::sleep(std::time::Duration::from_secs(1)).await;
+        if Ok(true) == rx.try_recv() {
+            return;
+        }
+    }
+
+    send_msg(Message::Fatal(format!("no connection in time")));
 }

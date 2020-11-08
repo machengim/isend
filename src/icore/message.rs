@@ -9,8 +9,9 @@ pub enum Message {
     Error(String),
     Fatal(String),          // Leads to the termination of process.
     Progress(u8),
-    Status(String),
     Prompt(String),         // This one requires user input.
+    Status(String),
+    Time(u64),             
 }
 
 // a channel struct holds the

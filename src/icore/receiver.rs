@@ -21,7 +21,9 @@ pub async fn launch(arg: RecvArg) -> Result<()> {
         }
     });
 
+    // After the connection established, stop the broadcast.
     let mut stream = listen_tcp_conn(&tcp_socket, arg.password.as_ref()).await?;
+    tx.send(true)?;
 
     Ok(())
 }
