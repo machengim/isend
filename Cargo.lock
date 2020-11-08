@@ -410,6 +410,8 @@ dependencies = [
  "async-std",
  "clap",
  "crossterm",
+ "lazy_static",
+ "log",
  "num_enum",
  "rpassword",
 ]

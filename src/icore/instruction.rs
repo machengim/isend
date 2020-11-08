@@ -2,6 +2,8 @@ use anyhow::Result;
 use num_enum::TryFromPrimitive;
 use std::convert::TryFrom;
 
+pub const INS_SIZE: usize = 8;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 pub enum Operation {
@@ -45,8 +47,8 @@ pub struct Instruction {
 
 impl Instruction {
     // Encode an instruction to an array of u8
-    pub fn encode(&self) -> [u8; 8] {
-        let mut buf = [0u8; 8];
+    pub fn encode(&self) -> [u8; INS_SIZE] {
+        let mut buf = [0u8; INS_SIZE];
         // Position 1~2 bytes are instruction id, a u16.
         buf[0] = u16::to_be_bytes(self.id)[0];
         buf[1] = u16::to_be_bytes(self.id)[1];
@@ -67,7 +69,7 @@ impl Instruction {
 
     // Decode a vector of u8 to an instruction
     pub fn decode(buf: &Vec<u8>) -> Result<Self> {
-        if buf.len() != 8 {
+        if buf.len() != INS_SIZE {
             panic!("Unknown instruction format");
         }
 

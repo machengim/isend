@@ -1,5 +1,6 @@
 mod cli;
 mod icore;
+mod logger;
 use clap::{load_yaml, App};
 use cli::parser::parse_input;
 use icore::arg::{Arg, SendArg, RecvArg};
@@ -7,6 +8,11 @@ use icore::{receiver, sender};
 
 #[async_std::main]
 async fn main() {
+    if let Err(e) = logger::init_log() {
+        eprintln!("Error in logger: {}", e);
+        std::process::exit(1);
+    }
+
     let yaml = load_yaml!("cli/cli.yaml");
     let m = App::from(yaml).get_matches();
 
@@ -18,8 +24,7 @@ async fn main() {
 }
 
 async fn start_sender(s: SendArg) {
-    // Test use: display send-arg.
-    println!("{:?}", &s);
+    log::debug!("Get sender arg:\n{:?}", &s);
 
     if let Err(e) = sender::launch(s).await {
         eprintln!("Error in sender: {}", e);
@@ -28,8 +33,7 @@ async fn start_sender(s: SendArg) {
 }
 
 async fn start_receiver(r: RecvArg) {
-    // Test use: display send-arg.
-    println!("{:?}", &r);
+    log::debug!("Get receiver arg:\n{:?}", &r);
 
     if let Err(e) = receiver::launch(r).await {
         eprintln!("Error in receiver: {}", e);
