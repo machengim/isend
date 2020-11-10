@@ -1,4 +1,6 @@
 use anyhow::{anyhow, Result};
+use async_std::fs::OpenOptions;
+use async_std::prelude::*;
 use async_std::net::{UdpSocket, TcpStream};
 use log::{debug, info};
 use std::path::PathBuf;
@@ -147,7 +149,8 @@ async fn send_single_file(stream: &mut TcpStream, file: &PathBuf) -> Result<()> 
     if !send_file_meta(stream, &current_file).await? {
         return Ok(());
     }
-    debug!("Send file done");
+
+    send_file_content(stream, &current_file).await?;
 
     Ok(())
 }
@@ -165,6 +168,24 @@ async fn send_file_meta(stream: &mut TcpStream, file: &CurrentFile) -> Result<bo
             Ok(false)
         }
     }
+}
+
+async fn send_file_content(stream: &mut TcpStream, f: &CurrentFile) -> Result<()> {
+    debug!("Sending file content");
+    let mut file = OpenOptions::new().read(true).open(f.path.clone()).await?;
+    let chunk_size = 0x800000;  // 8M size
+
+    loop {
+        let mut chunk = Vec::with_capacity(chunk_size);
+        let length = file.by_ref().take(chunk_size as u64).read_to_end(&mut chunk).await?;
+        if length == 0 { break; }
+
+        utils::send_ins_bytes(stream, read_id(), Operation::SendFileContent, &chunk).await?;
+        break;
+    }
+
+
+    Ok(())
 }
 
 async fn request_disconnect(stream: &mut TcpStream) -> Result<bool> {

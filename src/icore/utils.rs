@@ -4,8 +4,8 @@ use async_std::net::TcpStream;
 use super::instruction::{Instruction, INS_SIZE, Operation};
 
 // Send instruction along with its content to target.
-pub async fn send_ins(stream: &mut TcpStream, id: u16, operation: Operation, content: Option<&String>)
-    -> Result<()> {
+pub async fn send_ins(stream: &mut TcpStream, id: u16, 
+    operation: Operation, content: Option<&String>) -> Result<()> {
 
     let mut ins = Instruction {id, operation, ..Default::default()};
     match content {
@@ -19,7 +19,15 @@ pub async fn send_ins(stream: &mut TcpStream, id: u16, operation: Operation, con
         }
     }
 
-    log::debug!("Instruction sent: {:?}", &ins);
+    Ok(())
+}
+
+pub async fn send_ins_bytes(stream: &mut TcpStream, id: u16, 
+    operation: Operation, content: &Vec<u8>) -> Result<()> {
+    let ins = Instruction {id, operation, buffer: true, length: content.len() as u32};
+
+    send(stream, &ins, Some(Box::new(&content))).await?;
+
     Ok(())
 }
 
@@ -33,6 +41,8 @@ async fn send(stream: &mut TcpStream, ins: &Instruction,
     if let Some(s) = content {
         stream.write_all(&s).await?;
     }
+
+    log::debug!("Instruction sent: {:?}", &ins);
 
     Ok(())
 }
