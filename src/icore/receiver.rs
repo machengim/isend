@@ -20,8 +20,7 @@ pub async fn launch(arg: RecvArg) -> Result<()> {
     let arg_code = arg.code.clone();
     async_std::task::spawn(async move {
         if let Err(e) = broadcast_udp(tcp_port, arg_code, rx).await {
-            eprintln!("Error in UDP: {}", e);
-            std::process::exit(1);
+            message::send_msg(Message::Fatal(format!("UDP broadcast issue: {}", e)));
         }
     });
 
@@ -162,11 +161,11 @@ async fn recv_file_meta(stream: &mut TcpStream, ins: &Instruction,
     match get_valid_path(&name, arg) {
         Some(path) => {
             prepare_file(path, size, file).await?;
-            // reply_success
+            reply_success(stream, ins.id).await?;
             debug!("Prepared file: {:?}", file);
         },
         None => {
-            reply_refuse(stream, ins.id, "File transmission refused").await?;
+            reply_refuse(stream, ins.id, "File refused: user chose skip").await?;
             return Ok(());
         }
     }
@@ -182,9 +181,9 @@ fn get_valid_path(name: &String, arg: &RecvArg) -> Option<PathBuf> {
 
     path.push(arg.dir.clone());
     path.push(name);
+    debug!("current path: {:?} and overwrite: {:?}", &path, &overwrite);
 
     while path.is_file() || path.is_dir() {
-        debug!("current path: {:?} and overwrite: {:?}", &path, &overwrite);
         match overwrite {
             OverwriteStrategy::Ask => {
                 overwrite = OverwriteStrategy::ask();
@@ -210,9 +209,10 @@ fn get_valid_path(name: &String, arg: &RecvArg) -> Option<PathBuf> {
 }
 
 async fn prepare_file(path: PathBuf, size: u64, file: &mut CurrentFile) -> Result<()> {
+    debug!("Creating file: {:?}", &path);
     let filename = String::from(path.file_name().unwrap().to_str().unwrap());
-    debug!("Creating file: {}", filename);
-    let fd = OpenOptions::new().write(true).create(true).open(file.path.clone()).await?;
+    let path_str = path.to_str().unwrap();
+    let fd = OpenOptions::new().write(true).create(true).open(path_str).await?;
 
     file.path = path;
     file.name = filename;
@@ -226,6 +226,12 @@ async fn shutdown(stream: &mut TcpStream, id: u16) -> Result<()> {
     utils::send_ins(stream, id, Operation::RequestSuccess, None).await?;
     //stream.shutdown(std::net::Shutdown::Both)?;
     message::send_msg(Message::Done);
+
+    Ok(())
+}
+
+async fn reply_success(stream: &mut TcpStream, id: u16) -> Result<()> {
+    utils::send_ins(stream, id, Operation::RequestSuccess, None).await?;
 
     Ok(())
 }

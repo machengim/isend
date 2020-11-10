@@ -144,23 +144,26 @@ async fn send_files(stream: &mut TcpStream, files: &Vec<PathBuf>) -> Result<()> 
 // If any error happens or receiver chooses skip, skip this file.
 async fn send_single_file(stream: &mut TcpStream, file: &PathBuf) -> Result<()> {
     let current_file = CurrentFile::from(file)?;
-    if let Err(e) = send_file_meta(stream, &current_file).await {
-        return Err(e);
+    if !send_file_meta(stream, &current_file).await? {
+        return Ok(());
     }
-
+    debug!("Send file done");
 
     Ok(())
 }
 
 // Send file name and size as metainfo to receiver.
-async fn send_file_meta(stream: &mut TcpStream, file: &CurrentFile) -> Result<()> {
+async fn send_file_meta(stream: &mut TcpStream, file: &CurrentFile) -> Result<bool> {
     let meta = file.meta_to_string();
     let id = read_id();
     utils::send_ins(stream, id, Operation::StartSendFile, Some(&meta)).await?;
 
     match validate_reply(stream, id).await? {
-        (true, _) => Ok(()),
-        (false, detail) => Err(anyhow!(detail)),
+        (true, _) => Ok(true),
+        (false, detail) => {
+            message::send_msg(Message::Status(detail));
+            Ok(false)
+        }
     }
 }
 

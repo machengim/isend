@@ -78,7 +78,9 @@ fn print_done() {
     check_for_text();
     println!("Task done");
     flush();
-    
+
+    // wait half a second so that all output finish.
+    std::thread::sleep(std::time::Duration::from_millis(500));
     std::process::exit(0);
 }
 
