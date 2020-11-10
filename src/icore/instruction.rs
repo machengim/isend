@@ -9,27 +9,21 @@ pub const INS_SIZE: usize = 8;
 #[repr(u8)]
 pub enum Operation {
     // Request operation code.
-    Connect = 1,    // with or without password, needs reply
-    StartSendFile = 10,     // with file name, needs reply
-    SendFileSize = 11,      // with file size, needs reply
-    SendFileContent = 12,   // with file content
-    EndSendFile = 13,       // needs reply
-    StartSendDir = 20,      // with dir name
-    EndSendDir = 21,        // needs reply
-    SendMsg = 30,           // with message length
-    SendMsgContent = 31,    // with message content, needs reply
+    Connect = 10,    // with or without password, needs reply
+    StartSendFile = 20,     // with file name, needs reply
+    SendFileContent = 21,   // with file content
+    EndSendFile = 22,       // needs reply
+    StartSendDir = 30,      // with dir name
+    EndSendDir = 31,        // needs reply
+    SendMsg = 40,           // with message length
+    SendMsgContent = 41,    // with message content, needs reply
 
-    // Mutual operation code.
-    // Put it in between for the convinience of parsing.
-    EndConn = 100,          // needs reply
+    Disconnect = 100,          // needs reply
 
     // Response operation code.
-    ConnSuccess = 101,
-    ConnRefuse = 102,           // with reply content, no need to retry
-    ConnError = 103,            // with reply content, needs to retry
-    RequestSuccess = 110,   
-    RequestRefuse = 111,        // with reply content, no need to retry
-    RequestError = 112,         // with reply content, needs to retry
+    RequestSuccess = 200,   
+    RequestRefuse = 201,        // with reply content, no need to retry
+    RequestError = 202,         // with reply content, needs to retry
 }
 
 impl Default for Operation {
@@ -97,7 +91,7 @@ mod test {
     #[test]
     fn encode_ins_test() {
         let ins = Instruction {id: 5, operation: Operation::Connect, buffer: true, length: 43375};
-        let mut arr: [u8; 8] = [0, 5, 1, 1, 0, 0, 169, 111];
+        let mut arr: [u8; 8] = [0, 5, 10, 1, 0, 0, 169, 111];
         assert_eq!(ins.encode(), arr);
         arr[7] += 1;
         assert_ne!(ins.encode(), arr);
@@ -106,16 +100,9 @@ mod test {
     #[test]
     fn decode_ins_test() {
         let ins = Instruction {id: 5, operation: Operation::Connect, buffer: true, length: 43375};
-        let mut vec = vec![0, 5, 1, 1, 0, 0, 169, 111];
+        let mut vec = vec![0, 5, 10, 1, 0, 0, 169, 111];
         assert_eq!(Instruction::decode(&vec).unwrap(), ins);
         vec[0] += 1;
         assert_ne!(Instruction::decode(&vec).unwrap(), ins);
-    }
-
-    #[test]
-    #[should_panic]
-    fn decode_ins_bad_format(){
-        let vec = vec![0, 5, 1, 1, 0, 169, 111];
-        let _ = Instruction::decode(&vec);
     }
 }

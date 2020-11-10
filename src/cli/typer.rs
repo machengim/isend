@@ -38,7 +38,7 @@ fn listen_msg(rx: Receiver<Message>, tx: Sender<String>) {
             Ok(Message::Progress(p)) => {},
             Ok(Message::Error(e)) => {print_error(&e);},
             Ok(Message::Fatal(f)) => {print_fatal(&f);}
-            Ok(Message::Prompt(p)) => {},
+            Ok(Message::Prompt(p)) => {print_prompt(&p, &tx)},
             Ok(Message::Time(t)) => print_time(t),
             Err(e) => eprintln!("{}", e),
         }
@@ -96,9 +96,11 @@ fn print_fatal(f: &String) {
 }
 
 // Ask the user to input and send the result to the channel.
-fn print_prompt(p: &String, tx: Sender<String>) {
+fn print_prompt(p: &String, tx: &Sender<String>) {
     check_for_text();
     print!("{}", p);
+    flush();
+    
     let mut input = String::new();
     if let Err(e) = std::io::stdin().read_line(&mut input) {
         print_error(&format!("when reading input: {}", e));

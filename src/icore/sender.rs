@@ -1,10 +1,12 @@
 use anyhow::{anyhow, Result};
 use async_std::net::{UdpSocket, TcpStream};
 use log::{debug, info};
+use std::path::PathBuf;
 use std::net::SocketAddr;
 use std::sync::{mpsc, Mutex};
 use std::time::{Duration, Instant};
 use super::arg::SendArg;
+use super::currentfile::CurrentFile;
 use super::instruction::Operation;
 use super::message::{Message, self};
 use super::utils;
@@ -12,6 +14,7 @@ use super::utils;
 // Store refused sockets into a black list.
 lazy_static::lazy_static! {
     static ref BLACK_LIST: Mutex<Vec<SocketAddr>> = Mutex::new(Vec::new());
+    static ref ID: Mutex<u16> = Mutex::new(1);
 }
 
 // Entry function of Sender.
@@ -36,7 +39,7 @@ pub async fn launch(arg: SendArg) -> Result<()> {
     tx.send(true)?;
 
     // Start sending files and messages.
-    start_working(&mut stream).await?;
+    start_working(&mut stream, arg).await?;
 
     Ok(())
 }
@@ -80,30 +83,22 @@ async fn try_connect_tcp(socket: &SocketAddr, password: Option<&String>)
     let mut stream = TcpStream::connect(socket).await?;
     utils::send_ins(&mut stream, 0, Operation::Connect, password).await?;
 
-    let response = utils::recv_ins(&mut stream).await?;
-    match response.operation {
-        Operation::ConnSuccess => {
-            info!("Connection established");
-            return Ok(Some(stream));
-        },
-        Operation::ConnRefuse => {
-            let detail = utils::recv_content(&mut stream, response.length as usize).await?;
-            //println!("Connection refused: {}", String::from_utf8(detail)?);
-            message::send_msg(Message::Error(format!("Connection refused: {}", String::from_utf8(detail)?)));
-            // Add this socket to black list if connection being refused to avoid future attemp.
+    match validate_reply(&mut stream, 0).await {
+        Ok((true, _)) => Ok(Some(stream)),
+        Ok((false, detail)) => {
+            message::send_msg(Message::Error(format!("Connection refused: {}", detail)));
             BLACK_LIST.lock().unwrap().push(*socket);
+            Ok(None)
         },
-        Operation::ConnError => { 
-            let detail = utils::recv_content(&mut stream, response.length as usize).await?;
-            //println!("Error when connecting: {}", String::from_utf8(detail)?);
-            message::send_msg(Message::Error(format!("in connection: {}", String::from_utf8(detail)?)))
-        },
-        _ =>  println!("Unknow instruction in reponse"),
+        Err(e) => {
+            message::send_msg(Message::Error(format!("Error trying connecting TCP: {}", e)));
+            Ok(None)
+        }
     }
-
-    Ok(None)
 }
 
+// Wait for `expire` minutes before terminate the process.
+// Can be interrupted by the signal from parent function.
 async fn timer(expire: u8, rx: mpsc::Receiver<bool>) {
     let start = Instant::now();
 
@@ -121,28 +116,105 @@ async fn timer(expire: u8, rx: mpsc::Receiver<bool>) {
 }
 
 // After the connection established, start sending files and messages from here.
-async fn start_working(stream: &mut TcpStream) -> Result<()> {
-    let mut id = 0;
+async fn start_working(stream: &mut TcpStream, arg: SendArg) -> Result<()> {
+    if arg.files.is_some() {
+        send_files(stream, &arg.files.unwrap()).await?;
+    }
 
-    if request_disconnect(stream, &mut id).await? {
+    if request_disconnect(stream).await? {
         message::send_msg(Message::Status(format!("Ready to shutdown")));
     }
 
-    // shutdown service.
-    //stream.shutdown(std::net::Shutdown::Both)?;
     message::send_msg(Message::Done);
     Ok(())
 }
 
-async fn request_disconnect(stream: &mut TcpStream, id: &mut u16) -> Result<bool> {
-    *id = utils::inc_one_u16(*id);
-    utils::send_ins(stream, *id, Operation::EndConn, None).await?;
-    let reply = utils::recv_ins(stream).await?;
+async fn send_files(stream: &mut TcpStream, files: &Vec<PathBuf>) -> Result<()> {
+    for file in files {
+        if let Err(e) = send_single_file(stream, file).await {
+            message::send_msg(Message::Error(format!("Error sending file {:?} : {}", file, e)));
+        }
 
-    match (reply.id, reply.operation) {
-        (id, Operation::RequestSuccess) => return Ok(true),
-        (_, _) => message::send_msg(Message::Error(format!("wrong response for disconnection"))),
+        incre_id();
     }
 
-    Ok(false)
+    Ok(())
+}
+
+// If any error happens or receiver chooses skip, skip this file.
+async fn send_single_file(stream: &mut TcpStream, file: &PathBuf) -> Result<()> {
+    let current_file = CurrentFile::from(file)?;
+    if let Err(e) = send_file_meta(stream, &current_file).await {
+        return Err(e);
+    }
+
+
+    Ok(())
+}
+
+// Send file name and size as metainfo to receiver.
+async fn send_file_meta(stream: &mut TcpStream, file: &CurrentFile) -> Result<()> {
+    let meta = file.meta_to_string();
+    let id = read_id();
+    utils::send_ins(stream, id, Operation::StartSendFile, Some(&meta)).await?;
+
+    match validate_reply(stream, id).await? {
+        (true, _) => Ok(()),
+        (false, detail) => Err(anyhow!(detail)),
+    }
+}
+
+async fn request_disconnect(stream: &mut TcpStream) -> Result<bool> {
+    let id = read_id();
+    utils::send_ins(stream, id, Operation::Disconnect, None).await?;
+
+    match validate_reply(stream, id).await? {
+        (true, _) => { Ok(true) },
+        (false, detail) => {
+            message::send_msg(Message::Fatal(format!("disconnection request refused: {}", detail)));
+            Ok(false)
+        }
+    }
+}
+
+// Validate the reply id and the reply operation.
+// For abnormal reply, read the details as well.
+async fn validate_reply(stream: &mut TcpStream, id: u16) -> Result<(bool, String)> {
+    let reply = utils::recv_ins(stream).await?;
+    if reply.id != id {
+        return Err(anyhow!("wrong id in reply"));
+    }
+
+    let detail = if reply.buffer {
+        get_reply_content(stream, reply.length as usize).await?
+    } else {
+        String::new()
+    };
+
+    match reply.operation {
+        Operation::RequestSuccess => Ok((true, detail)),
+        Operation::RequestRefuse => Ok((false, detail)),
+        Operation::RequestError => Err(anyhow!(detail)),
+        _ => Err(anyhow!("Unknown reply")),
+    }
+}
+
+// Helper function to read details for validate_reply().
+async fn get_reply_content(stream: &mut TcpStream, length: usize) -> Result<String> {
+    let detail = utils::recv_content(stream, length).await?;
+
+    Ok(String::from_utf8(detail)?)
+}
+
+// Increment ID by 1. If it reaches the boundary of U16, set it to 1.
+// 0 is reservered.
+fn incre_id() {
+    let mut id = ID.lock().unwrap();
+    *id = if *id < u16::MAX { *id + 1 } else {1};
+}
+
+fn read_id() -> u16 {
+    let id = ID.lock().unwrap();
+
+    *id
 }
