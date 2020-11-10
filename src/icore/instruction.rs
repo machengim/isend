@@ -16,7 +16,6 @@ pub enum Operation {
     StartSendDir = 30,      // with dir name
     EndSendDir = 31,        // needs reply
     SendMsg = 40,           // with message length
-    SendMsgContent = 41,    // with message content, needs reply
 
     Disconnect = 100,          // needs reply
 

@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use log::{debug, info};
 use std::io::{self, Write};
 use std::sync::mpsc::{self, Sender, Receiver};
 use std::sync::Mutex;
@@ -80,7 +79,7 @@ fn print_done() {
     flush();
 
     // wait half a second so that all output finish.
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    std::thread::sleep(std::time::Duration::from_secs(1));
     std::process::exit(0);
 }
 

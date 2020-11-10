@@ -53,6 +53,8 @@ pub async fn recv_ins(stream: &mut TcpStream) -> Result<Instruction> {
     stream.by_ref().take(INS_SIZE as u64).read_to_end(&mut buf).await?;
     let ins = Instruction::decode(&buf)?;
 
+    log::debug!("Receive instruction: {:?}", &ins);
+    
     Ok(ins)
 }
 

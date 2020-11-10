@@ -32,6 +32,15 @@ impl CurrentFile {
         Ok(current)
     }
 
+    // retrieve the fd of the current file object,
+    // return error if not existed.
+    pub fn must_get_fd(&self) -> Result<&File> {
+        match &self.fd {
+            Some(fd) => Ok(fd),
+            None => Err(anyhow!("No file descriptor found")),
+        }
+    }
+
     pub fn meta_to_string(&self) -> String {
         format!("size:{};name:{}", self.size, self.name)
     }

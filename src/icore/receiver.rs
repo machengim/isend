@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use async_std::prelude::*;
 use async_std::fs::OpenOptions;
 use async_std::net::{TcpListener, TcpStream, UdpSocket};
 use log::{info, debug};
@@ -124,7 +125,9 @@ async fn start_working(stream: &mut TcpStream, arg: RecvArg) -> Result<()> {
         
         match ins.operation {
             Operation::StartSendFile => recv_file_meta(stream, &ins, &mut current_file, &arg).await?,
-            Operation::SendFileContent => debug!("Receiving file content"),
+            Operation::SendFileContent => recv_file_content(stream, &ins, &mut current_file).await?,
+            Operation::EndSendFile => recv_file_end(stream, &ins, &mut current_file).await?,
+            Operation::SendMsg => recv_msg(stream, &ins).await?,
             Operation::Disconnect => break,
             _ => return Err(anyhow!("Unknown request instruction")),
         }
@@ -169,6 +172,35 @@ async fn recv_file_meta(stream: &mut TcpStream, ins: &Instruction,
             return Ok(());
         }
     }
+
+    Ok(())
+}
+
+async fn recv_file_content(stream: &mut TcpStream, ins: &Instruction, file: &mut CurrentFile) -> Result<()> {
+    let content_buf = utils::recv_content(stream, ins.length as usize).await?;
+    let mut fd = file.must_get_fd()?;
+
+    fd.write_all(&content_buf).await?;
+    file.transmitted += ins.length as u64;
+
+    Ok(())
+}
+
+async fn recv_file_end(stream: &mut TcpStream, ins: &Instruction, file: &mut CurrentFile) -> Result<()> {
+    if file.fd.is_none() {
+        return Err(anyhow!("File not opened"));
+    }
+
+    utils::send_ins(stream, ins.id, Operation::RequestSuccess, None).await?;
+
+    Ok(())
+}
+
+async fn recv_msg(stream: &mut TcpStream, ins: &Instruction) -> Result<()> {
+    let msg_buf = utils::recv_content(stream, ins.length as usize).await?;
+    let msg = String::from_utf8(msg_buf)?;
+    message::send_msg(Message::Status(format!("Message received: {}", &msg)));
+    reply_success(stream, ins.id).await?;
 
     Ok(())
 }

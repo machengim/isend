@@ -123,6 +123,10 @@ async fn start_working(stream: &mut TcpStream, arg: SendArg) -> Result<()> {
         send_files(stream, &arg.files.unwrap()).await?;
     }
 
+    if arg.msg.is_some(){
+        send_message(stream, &arg.msg.unwrap()).await?;
+    }
+
     if request_disconnect(stream).await? {
         message::send_msg(Message::Status(format!("Ready to shutdown")));
     }
@@ -136,8 +140,6 @@ async fn send_files(stream: &mut TcpStream, files: &Vec<PathBuf>) -> Result<()> 
         if let Err(e) = send_single_file(stream, file).await {
             message::send_msg(Message::Error(format!("Error sending file {:?} : {}", file, e)));
         }
-
-        incre_id();
     }
 
     Ok(())
@@ -152,6 +154,8 @@ async fn send_single_file(stream: &mut TcpStream, file: &PathBuf) -> Result<()> 
 
     send_file_content(stream, &current_file).await?;
 
+    send_file_end(stream).await?;
+
     Ok(())
 }
 
@@ -160,14 +164,9 @@ async fn send_file_meta(stream: &mut TcpStream, file: &CurrentFile) -> Result<bo
     let meta = file.meta_to_string();
     let id = read_id();
     utils::send_ins(stream, id, Operation::StartSendFile, Some(&meta)).await?;
+    incre_id();
 
-    match validate_reply(stream, id).await? {
-        (true, _) => Ok(true),
-        (false, detail) => {
-            message::send_msg(Message::Status(detail));
-            Ok(false)
-        }
-    }
+    process_reply(stream, id).await
 }
 
 async fn send_file_content(stream: &mut TcpStream, f: &CurrentFile) -> Result<()> {
@@ -184,8 +183,24 @@ async fn send_file_content(stream: &mut TcpStream, f: &CurrentFile) -> Result<()
         break;
     }
 
-
+    incre_id();
     Ok(())
+}
+
+async fn send_file_end(stream: &mut TcpStream) -> Result<bool> {
+    let id = read_id();
+    utils::send_ins(stream, id, Operation::EndSendFile, None).await?;
+
+    incre_id();
+    process_reply(stream, id).await
+}
+
+async fn send_message(stream: &mut TcpStream, msg: &String) -> Result<bool> {
+    let id = read_id();
+    utils::send_ins(stream, id, Operation::SendMsg, Some(msg)).await?;
+
+    incre_id();
+    process_reply(stream, id).await
 }
 
 async fn request_disconnect(stream: &mut TcpStream) -> Result<bool> {
@@ -196,6 +211,16 @@ async fn request_disconnect(stream: &mut TcpStream) -> Result<bool> {
         (true, _) => { Ok(true) },
         (false, detail) => {
             message::send_msg(Message::Fatal(format!("disconnection request refused: {}", detail)));
+            Ok(false)
+        }
+    }
+}
+
+async fn process_reply(stream: &mut TcpStream, id: u16) -> Result<bool> {
+    match validate_reply(stream, id).await? {
+        (true, _) => Ok(true),
+        (false, detail) => {
+            message::send_msg(Message::Status(detail));
             Ok(false)
         }
     }

@@ -100,6 +100,7 @@ fn parse_files(fs: &mut Values) -> Option<Vec<PathBuf>> {
             files.push(path);
         } else {
             eprintln!("Invalid path: {}", f);
+            std::process::exit(1);
         }
     }
 
