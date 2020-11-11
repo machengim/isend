@@ -2,8 +2,8 @@ name: Build
 
 on: 
   push:
-    paths:
-    - src/**
+    branches:
+    - master
 
 jobs:
   build:
