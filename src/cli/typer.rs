@@ -43,7 +43,7 @@ fn listen_msg(rx: Receiver<Message>, tx: Sender<String>) {
 
 fn print_done(line: &mut LineType) {
     check_line_type(line, true);
-    println!("Task done");
+    println!("\nTask done");
 
     std::process::exit(0);
 }

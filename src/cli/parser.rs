@@ -142,6 +142,7 @@ fn parse_dir(m: &ArgMatches) -> Option<PathBuf> {
 }
 
 fn parse_overwrite(m: &ArgMatches) -> OverwriteStrategy {
+    log::debug!("Parsing overwirte");
     match m.value_of("overwrite") {
         Some("o") | Some("O") => OverwriteStrategy::Overwrite,
         Some("r") | Some("R") => OverwriteStrategy::Rename,

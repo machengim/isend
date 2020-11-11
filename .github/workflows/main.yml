@@ -1,0 +1,35 @@
+name: Build
+
+on: 
+  push:
+    branches:
+      paths:
+      - src/**
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    defaults:
+      run:
+        shell: bash
+        
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Cache Dependencies
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Rust Setup
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Build
+        run: cargo build

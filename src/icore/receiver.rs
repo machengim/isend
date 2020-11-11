@@ -68,13 +68,13 @@ async fn listen_tcp_conn(socket: &TcpListener, password: Option<&String>) -> Res
                 match valiate_tcp_conn(&mut stream, &ins, password).await {
                     Ok(true) => {
                         utils::send_ins(&mut stream, 0, Operation::RequestSuccess, None).await?;
-                        message::send_msg(Message::Status(format!("Connection established")));
+                        message::send_msg(Message::Status(format!("Connection established\n")));
                         return Ok(stream);
                     },
                     Ok(false) => {
                         let reply = format!("Invalid password");
                         utils::send_ins(&mut stream, 0, Operation::RequestRefuse, Some(&reply)).await?;
-                        message::send_msg(Message::Status(reply));
+                        message::send_msg(Message::Status(format!("Connection refused: {}", reply)));
                     }
                     Err(e) => {
                         let reply = format!("Get error when validating tcp connection: {}", e);
@@ -170,6 +170,8 @@ fn create_dir(path: &PathBuf) -> bool {
 }
 
 async fn recv_dir_end(stream: &mut TcpStream, ins: &Instruction, arg:&mut RecvArg) -> Result<()> {
+    let current = arg.dir.file_name().unwrap();
+    message::send_msg(Message::Status(format!("Finish receiving directory: {:?}", current)));
     arg.dir.pop();
     log::debug!("Current working dir: {:?}", &arg.dir);
     reply_success(stream, ins.id).await?;
@@ -242,7 +244,7 @@ async fn recv_file_end(stream: &mut TcpStream, ins: &Instruction, file: &mut Cur
 async fn recv_msg(stream: &mut TcpStream, ins: &Instruction) -> Result<()> {
     let msg_buf = utils::recv_content(stream, ins.length as usize).await?;
     let msg = String::from_utf8(msg_buf)?;
-    message::send_msg(Message::Status(format!("Message received: {}", &msg)));
+    message::send_msg(Message::Status(format!("\nMessage received: \"{}\"", &msg)));
     reply_success(stream, ins.id).await?;
 
     Ok(())
@@ -257,10 +259,18 @@ fn get_valid_path(name: &String, arg: &RecvArg) -> Option<(PathBuf, bool)> {
     path.push(arg.dir.clone());
     path.push(name);
 
+    let dir_name = path.file_name().unwrap();
+    if path.is_dir() {
+        message::send_msg(Message::Status(format!("Start receiving directory: {:?}", dir_name)));
+    }
+
     let ftype = if path.is_file() { "file" } else { "directory" };
-    // Make this message progress so it can be cleared.
-    message::send_msg(Message::Progress(format!("Receiving {}: `{}`", &ftype, &name)));
     let existed = path.is_file() || path.is_dir();
+
+    if existed && overwrite == OverwriteStrategy::Ask {
+        let info = format!("Alert: {} {:?} already existed", &ftype, &dir_name);
+        message::send_msg(Message::Status(info));
+    }
 
     while path.is_file() || path.is_dir() {
         match overwrite {

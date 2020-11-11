@@ -39,7 +39,7 @@ pub async fn launch(arg: SendArg) -> Result<()> {
     let password = arg.password.clone();
     let mut stream = listen_udp(&udp, expire, password.as_ref()).await?;
     tx.send(true)?;
-    message::send_msg(Message::Status(format!("Connection established")));
+    message::send_msg(Message::Status(format!("Connection established\n")));
 
     // Start sending files and messages.
     start_sending(&mut stream, arg).await?;
@@ -103,10 +103,12 @@ async fn try_connect_tcp(socket: &SocketAddr, password: Option<&String>)
 // Wait for `expire` minutes before terminate the process.
 // Can be interrupted by the signal from parent function.
 async fn timer(expire: u8, rx: mpsc::Receiver<bool>) {
+    log::debug!("Timer in {} minutes", expire);
     let start = Instant::now();
 
     while start.elapsed().as_secs() < (expire * 60) as u64 {
-        let t = (expire * 60) as u64 - start.elapsed().as_secs();
+        // Note the type cast should come first to avoid `expire` overflow.
+        let t = (expire as u64 * 60) - start.elapsed().as_secs();
         message::send_msg(Message::Time(t));
         
         async_std::task::sleep(std::time::Duration::from_secs(1)).await;
@@ -162,6 +164,8 @@ fn send_files(stream: &mut TcpStream, files: &Vec<PathBuf>) -> Result<()> {
 async fn send_dir(stream: &mut TcpStream, dir: &PathBuf) -> Result<()> {
     let id = read_id();
     let dir_name = dir.file_name().unwrap().to_str().unwrap().to_string();
+
+    message::send_msg(Message::Status(format!("Start sending directory: \"{}\"", &dir_name)));
     utils::send_ins(stream, id, Operation::StartSendDir, Some(&dir_name)).await?;
     incre_id();
 
@@ -170,8 +174,6 @@ async fn send_dir(stream: &mut TcpStream, dir: &PathBuf) -> Result<()> {
     if !process_reply(stream, id).await? {
         return Ok(());
     }
-
-    message::send_msg(Message::Status(format!("Start sending directory: `{}`", &dir_name)));
 
     let mut paths = Vec::new();
     for entry in dir.read_dir()? {
@@ -184,7 +186,7 @@ async fn send_dir(stream: &mut TcpStream, dir: &PathBuf) -> Result<()> {
     send_files(stream, &paths)?;
     
     send_dir_end(stream).await?;
-    message::send_msg(Message::Status(format!("Finish sending directory: `{}`", &dir_name)));
+    message::send_msg(Message::Status(format!("Finish sending directory: \"{}\"", &dir_name)));
 
     Ok(())
 }

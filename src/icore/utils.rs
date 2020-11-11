@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use async_std::prelude::*;
 use async_std::net::TcpStream;
 use super::instruction::{Instruction, INS_SIZE, Operation};

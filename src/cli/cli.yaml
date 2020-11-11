@@ -26,7 +26,7 @@ args:
     - overwrite:
         long: overwrite
         about: Receiver sets to overwrite files with same name
-        takes_value: false
+        takes_value: true
     - password:
         short: p
         long: password

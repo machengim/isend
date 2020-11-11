@@ -6,7 +6,7 @@ pub enum Arg {
     R(RecvArg),
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum OverwriteStrategy {
     Ask,
     Rename,

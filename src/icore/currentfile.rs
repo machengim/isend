@@ -63,7 +63,7 @@ impl CurrentFile {
         let total = human_read_size(self.size);
         let transmitted = human_read_size(self.transmitted);
 
-        format!("File: `{}`\t \tProgress: {}/{}", self.name, transmitted, total)
+        format!("File: \"{}\"\t\tProgress: {}/{}", self.name, transmitted, total)
     }
 }
 
