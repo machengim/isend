@@ -57,6 +57,14 @@ impl CurrentFile {
 
         Ok((size, name))
     }
+
+    // Get the current progress of transmission with certain format.
+    pub fn get_progress(&self) -> String {
+        let total = human_read_size(self.size);
+        let transmitted = human_read_size(self.transmitted);
+
+        format!("File: `{}`\t \tProgress: {}/{}", self.name, transmitted, total)
+    }
 }
 
 // Helper function to read file name.
@@ -64,6 +72,22 @@ fn read_file_name(file: &PathBuf) -> Option<String> {
     let filename = file.file_name()?.to_str()?;
 
     Some(String::from(filename))
+}
+
+// Convert the size number to a human readable string.
+fn human_read_size(size: u64) -> String {
+    let suffix = ["B", "KB", "MB", "GB", "TB"];
+    let mut result = format!("{}B", size);
+
+    for i in (1..5).rev() {
+        if size / 2u64.pow(i * 10) > 0 {
+            let number: f64 = size as f64 / 2u64.pow(i * 10) as f64;
+            result = format!("{:.1}{}", number, suffix[i as usize]);
+            break;
+        } 
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -85,5 +109,11 @@ mod test {
 
         assert_eq!(f.name, String::from("Hello"));
         assert_eq!(f.size, 2954040);
+    }
+
+    #[test]
+    fn human_read_size_test() {
+        let size = 10240241u64;
+        assert_eq!(human_read_size(size), String::from("9.77MB"));
     }
 }

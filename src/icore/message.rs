@@ -1,13 +1,14 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{mpsc, Mutex, MutexGuard};
+use std::sync::{mpsc, Mutex};
 
 #[derive(Clone, Debug)]
 pub enum Message {
     Done,
     Error(String),
+    FileEnd,                // Current file transmission finished.
     Fatal(String),          // Leads to the termination of process.
-    Progress(u8),
+    Progress(String),
     Prompt(String),         // This one requires user input.
     Status(String),
     Time(u64),             

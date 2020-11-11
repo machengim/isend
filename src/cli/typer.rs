@@ -1,19 +1,11 @@
-use anyhow::{anyhow, Result};
 use std::io::{self, Write};
 use std::sync::mpsc::{self, Sender, Receiver};
-use std::sync::Mutex;
 use crate::icore::message::{self, Message};
 
-// Type of lines in terminal.
-#[derive(Clone)]
 enum LineType {
     Text,
     Time,
     Progress,
-}
-
-lazy_static::lazy_static! {
-    static ref CURRENT_LINE_TYPE: Mutex<LineType> = Mutex::new(LineType::Text);
 }
 
 // Entry point of typer. 
@@ -30,105 +22,116 @@ pub fn launch() {
 
 // listen on the channel continuously to get message from icore.
 fn listen_msg(rx: Receiver<Message>, tx: Sender<String>) {
+    // False if the next content needs to start a new line or just refresh the current.
+    // Only the timer and progress are not fixed (true).
+    let mut line = LineType::Text;    
+
     loop {
         match rx.recv() {
-            Ok(Message::Done)=> print_done(),
-            Ok(Message::Status(s)) => {print_status(&s);},
-            Ok(Message::Progress(p)) => {},
-            Ok(Message::Error(e)) => {print_error(&e);},
-            Ok(Message::Fatal(f)) => {print_fatal(&f);}
-            Ok(Message::Prompt(p)) => {print_prompt(&p, &tx)},
-            Ok(Message::Time(t)) => print_time(t),
+            Ok(Message::Done)=> print_done(&mut line),
+            Ok(Message::Error(s)) => print_error(&s, &mut line),
+            Ok(Message::Fatal(s)) => print_fatal(&s, &line),
+            Ok(Message::FileEnd) =>  print_file_end(&mut line),
+            Ok(Message::Progress(s)) => print_progress(&s, &mut line),
+            Ok(Message::Prompt(s)) => print_prompt(&s, &tx, &mut line),
+            Ok(Message::Status(s)) => print_status(&s, &mut line),
+            Ok(Message::Time(time)) => print_time(&time, &mut line),
             Err(e) => eprintln!("{}", e),
         }
     }
 }
 
-fn change_current_line_type(t: LineType) {
-    let mut current = CURRENT_LINE_TYPE.lock().unwrap();
-    *current = t;
-}
-
-// Get the current line type.
-fn get_current_line_type() -> LineType {
-    let current = CURRENT_LINE_TYPE.lock().unwrap();
-
-    current.clone()
-}
-
-// Check whether current line type is text or progress.
-fn check_time_pg() -> bool {
-    match get_current_line_type() {
-        LineType::Text | LineType::Progress => true,
-        _ => false,
-    }
-}
-
-// If current line is time or progress, the next text line
-// needs to remove these line.
-fn check_for_text() {
-    if check_time_pg() {
-        print!("\r");
-        flush();
-    }
-}
-
-fn print_done() {
-    check_for_text();
+fn print_done(line: &mut LineType) {
+    check_line_type(line, true);
     println!("Task done");
-    flush();
 
-    // wait half a second so that all output finish.
-    //std::thread::sleep(std::time::Duration::from_secs(1));
     std::process::exit(0);
 }
 
-fn print_error(e: &String) {
-    check_for_text();
-    eprintln!("Error: {}", e);
-    change_current_line_type(LineType::Text);
+fn print_error(s: &String, line: &mut LineType) {
+    check_line_type(line, true);
+    eprintln!("Error: {}", s);
+    *line = LineType::Text;
 }
 
-// Notice that fatal error will terminate the whole process.
-fn print_fatal(f: &String) {
-    check_for_text();
-    eprintln!("Fatal Error: {}", f);
+fn print_file_end(line: &mut LineType) {
+    println!();
+
+    *line = LineType::Text;
+}
+
+fn print_fatal(s: &String, line: &LineType) {
+    check_line_type(line, true);
+    eprintln!("Fatal error: {}\nProcess exit", s);
     std::process::exit(1);
 }
 
-// Ask the user to input and send the result to the channel.
-fn print_prompt(p: &String, tx: &Sender<String>) {
-    check_for_text();
-    print!("{}", p);
-    flush();
+fn print_progress(s: &String, line: &mut LineType) {
+    check_line_type(line, false);
+    print_flush(&format!("{}", s));
+
+    *line = LineType::Progress;
+}
+
+fn print_prompt(s: &String, tx: &Sender<String>, line: &mut LineType) {
+    check_line_type(line, true);
+    print_flush(&format!("{}", s));
     
     let mut input = String::new();
     if let Err(e) = std::io::stdin().read_line(&mut input) {
-        print_error(&format!("when reading input: {}", e));
+        print_error(&format!("when reading input: {}", e), line);
     }
 
     if let Err(e) = tx.send(input) {
-        print_error(&format!("when sending user input to model: {}", e));
+        print_error(&format!("when sending user input to model: {}", e), line);
     }
 
-    change_current_line_type(LineType::Text);
+    *line = LineType::Text;
 }
 
-fn print_status(s: &String) {
-    check_for_text();
+fn print_status(s: &String, line: &mut LineType) {
+    match *line {
+        LineType::Time => print!("\r"),
+        LineType::Progress => println!(),
+        _ => (),
+    }
+
     println!("{}", s);
-    change_current_line_type(LineType::Text);
+
+    *line = LineType::Text;
 }
 
-fn print_time(t: u64) {
+fn print_time(t: &u64, line: &mut LineType) {
+    check_line_type(line, false);
+
     let time_str = format!("{}:{}", t / 60, t % 60);
-    print!("\rTime left: {}", time_str);
-    flush();
-    change_current_line_type(LineType::Time);
+    print_flush(&format!("Time left: {}", time_str));
+
+    *line = LineType::Time;
 }
 
-fn flush() {
+fn print_flush(s: &String) {
+    print!("{}", s);
+
     if let Err(e) = io::stdout().flush() {
-        print_error(&format!("in stdout: {}", e));
+        eprintln!("Cannot flush buffer to terminal: {}", e);
+    }
+}
+
+// Prepare the line before printing contents.
+// Clear current line or start a new line.
+fn check_line_type(line: &LineType, new_line: bool) {
+    match (is_refresh(line), new_line) {
+        (true, true) => println!(),
+        (true, false) => print!("\r"),
+        _ => (),
+    }
+}
+
+// check whether current line is refreshable.
+fn is_refresh(line: &LineType) -> bool {
+    match line {
+        LineType::Text => false,
+        _ => true,
     }
 }

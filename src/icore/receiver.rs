@@ -137,8 +137,8 @@ async fn start_recving(stream: &mut TcpStream, arg:RecvArg) -> Result<()> {
 async fn recv_dir(stream: &mut TcpStream, ins: &Instruction, arg: &mut RecvArg) -> Result<()> {
     let dir_name_buf = utils::recv_content(stream, ins.length as usize).await?;
     let dir_name = String::from_utf8(dir_name_buf)?;
-    let (child_path, renamed) = match get_valid_path(&dir_name, arg) {
-        Some((p, r)) => (p, r),
+    let (child_path, needs_create) = match get_valid_path(&dir_name, arg) {
+        Some((path, need)) => (path, need),
         None => {
             reply_refuse(stream, ins.id, "Directory refused: user chose skip").await?;
             return Ok(());
@@ -146,7 +146,7 @@ async fn recv_dir(stream: &mut TcpStream, ins: &Instruction, arg: &mut RecvArg) 
     };
 
     // Only if the overwrite strategy is `rename`, a new directory needs to be created.
-    if renamed && !create_dir(&child_path) {
+    if needs_create && !create_dir(&child_path) {
         let detail = format!("Cannot create directory on receiver");
         reply_error(stream, ins.id, &detail).await?;
 
@@ -221,6 +221,7 @@ async fn recv_file_content(stream: &mut TcpStream, ins: &Instruction, file: &mut
 
     fd.write_all(&content_buf).await?;
     file.transmitted += ins.length as u64;
+    message::send_msg(Message::Progress(file.get_progress()));
 
     Ok(())
 }
@@ -232,6 +233,7 @@ async fn recv_file_end(stream: &mut TcpStream, ins: &Instruction, file: &mut Cur
 
     // Reset the current file when receiving the end file command.
     *file = CurrentFile::default();
+    message::send_msg(Message::FileEnd);
     utils::send_ins(stream, ins.id, Operation::RequestSuccess, None).await?;
 
     Ok(())
@@ -254,7 +256,11 @@ fn get_valid_path(name: &String, arg: &RecvArg) -> Option<(PathBuf, bool)> {
 
     path.push(arg.dir.clone());
     path.push(name);
-    log::debug!("current path: {:?} and overwrite: {:?}", &path, &overwrite);
+
+    let ftype = if path.is_file() { "file" } else { "directory" };
+    // Make this message progress so it can be cleared.
+    message::send_msg(Message::Progress(format!("Receiving {}: `{}`", &ftype, &name)));
+    let existed = path.is_file() || path.is_dir();
 
     while path.is_file() || path.is_dir() {
         match overwrite {
@@ -276,11 +282,13 @@ fn get_valid_path(name: &String, arg: &RecvArg) -> Option<(PathBuf, bool)> {
     }
 
     if renamed {
-        message::send_msg(Message::Status(format!("path renamed to {:?}", 
-            path.file_name().unwrap())));
+        message::send_msg(Message::Status(format!("Renamed {} to {:?}", 
+            &ftype, path.file_name().unwrap())));
     }
 
-    Some((path, renamed))
+    // The path needs to be created if it didn't exist or
+    // it existed but user chose to rename it.
+    Some((path, !existed || renamed))
 }
 
 async fn prepare_file(path: PathBuf, size: u64, file: &mut CurrentFile) -> Result<()> {

@@ -39,6 +39,7 @@ pub async fn launch(arg: SendArg) -> Result<()> {
     let password = arg.password.clone();
     let mut stream = listen_udp(&udp, expire, password.as_ref()).await?;
     tx.send(true)?;
+    message::send_msg(Message::Status(format!("Connection established")));
 
     // Start sending files and messages.
     start_sending(&mut stream, arg).await?;
@@ -170,6 +171,8 @@ async fn send_dir(stream: &mut TcpStream, dir: &PathBuf) -> Result<()> {
         return Ok(());
     }
 
+    message::send_msg(Message::Status(format!("Start sending directory: `{}`", &dir_name)));
+
     let mut paths = Vec::new();
     for entry in dir.read_dir()? {
         if let Ok(entry) = entry {
@@ -181,6 +184,7 @@ async fn send_dir(stream: &mut TcpStream, dir: &PathBuf) -> Result<()> {
     send_files(stream, &paths)?;
     
     send_dir_end(stream).await?;
+    message::send_msg(Message::Status(format!("Finish sending directory: `{}`", &dir_name)));
 
     Ok(())
 }
@@ -197,12 +201,12 @@ async fn send_dir_end(stream: &mut TcpStream) -> Result<()> {
 
 // If any error happens or receiver chooses skip, skip this file.
 async fn send_single_file(stream: &mut TcpStream, file: &PathBuf) -> Result<()> {
-    let current_file = CurrentFile::from(file)?;
+    let mut current_file = CurrentFile::from(file)?;
     if !send_file_meta(stream, &current_file).await? {
         return Ok(());
     }
 
-    send_file_content(stream, &current_file).await?;
+    send_file_content(stream, &mut current_file).await?;
 
     send_file_end(stream).await?;
 
@@ -219,7 +223,7 @@ async fn send_file_meta(stream: &mut TcpStream, file: &CurrentFile) -> Result<bo
     process_reply(stream, id).await
 }
 
-async fn send_file_content(stream: &mut TcpStream, f: &CurrentFile) -> Result<()> {
+async fn send_file_content(stream: &mut TcpStream, f: &mut CurrentFile) -> Result<()> {
     log::debug!("Sending file content");
     let mut file = OpenOptions::new().read(true).open(f.path.clone()).await?;
     let chunk_size = 0x800000;  // 8M size
@@ -230,9 +234,13 @@ async fn send_file_content(stream: &mut TcpStream, f: &CurrentFile) -> Result<()
         if length == 0 { break; }
 
         utils::send_ins_bytes(stream, read_id(), Operation::SendFileContent, &chunk).await?;
+        f.transmitted += length as u64;
+        message::send_msg(Message::Progress(f.get_progress()));
     }
 
+    message::send_msg(Message::FileEnd);
     incre_id();
+
     Ok(())
 }
 
