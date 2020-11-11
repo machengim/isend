@@ -2,7 +2,6 @@ use anyhow::{anyhow, Result};
 use async_std::prelude::*;
 use async_std::fs::OpenOptions;
 use async_std::net::{TcpListener, TcpStream, UdpSocket};
-use log::{info, debug};
 use std::path::PathBuf;
 use std::sync::mpsc;
 use super::arg::{OverwriteStrategy, RecvArg};
@@ -12,10 +11,10 @@ use super::message::{self, Message};
 use super::utils;
 
 pub async fn launch(arg: RecvArg) -> Result<()> {
-    info!("Start receiver function");
+    log::info!("Start receiver function");
     let tcp_socket = TcpListener::bind(("0.0.0.0", 0)).await?;
     let tcp_port = tcp_socket.local_addr()?.port();
-    debug!("Listen on TCP port {}", tcp_port);
+    log::debug!("Listen on TCP port {}", tcp_port);
 
     let (tx, rx) = mpsc::channel();
     let arg_code = arg.code.clone();
@@ -29,7 +28,7 @@ pub async fn launch(arg: RecvArg) -> Result<()> {
     let mut stream = listen_tcp_conn(&tcp_socket, arg.password.as_ref()).await?;
     tx.send(true)?;
 
-    start_working(&mut stream, arg).await?;
+    start_recving(&mut stream, arg).await?;
 
     Ok(())
 }
@@ -43,7 +42,7 @@ async fn broadcast_udp(local_port: u16, target_port: u16, rx: mpsc::Receiver<boo
 
     for _ in 0..10 {
         udp_socket.send_to(&u16::to_be_bytes(local_port), ("255.255.255.255", target_port)).await?;
-        debug!("UDP broadcast sent to port {}", target_port);
+        log::debug!("UDP broadcast sent to port {}", target_port);
         async_std::task::sleep(std::time::Duration::from_secs(5)).await;
 
         // Check message in channel
@@ -61,7 +60,7 @@ async fn listen_tcp_conn(socket: &TcpListener, password: Option<&String>) -> Res
 
     loop {
         let (mut stream, addr) = socket.accept().await?;
-        info!("Receive connection request from {}", &addr);
+        log::info!("Receive connection request from {}", &addr);
 
         let ins = utils::recv_ins(&mut stream).await?;
         match ins.operation {
@@ -84,7 +83,7 @@ async fn listen_tcp_conn(socket: &TcpListener, password: Option<&String>) -> Res
                     }
                 }
             },
-            _ => { debug!("Unknown operation code when expecting connection request")},
+            _ => { log::debug!("Unknown operation code when expecting connection request")},
         }
     }
 }
@@ -110,30 +109,70 @@ async fn compare_pass(stream: &mut TcpStream, ins: &Instruction, password: &Stri
     
     let buf = utils::recv_content(stream, ins.length as usize).await?;
     let req_pass = String::from_utf8(buf)?;
-    debug!("Local password: {}, remote password: {}", password, req_pass);
+    log::debug!("Local password: {}, remote password: {}", password, req_pass);
 
     Ok(&req_pass == password)
 }
 
-async fn start_working(stream: &mut TcpStream, arg: RecvArg) -> Result<()> {
-    let mut id = 0u16;  // id will change to the request id.
+async fn start_recving(stream: &mut TcpStream, arg:RecvArg) -> Result<()> {
+    let mut arg = arg;
     let mut current_file = CurrentFile::default();
 
     loop {
         let ins = utils::recv_ins(stream).await?;
-        id = ins.id;
         
         match ins.operation {
             Operation::StartSendFile => recv_file_meta(stream, &ins, &mut current_file, &arg).await?,
             Operation::SendFileContent => recv_file_content(stream, &ins, &mut current_file).await?,
             Operation::EndSendFile => recv_file_end(stream, &ins, &mut current_file).await?,
+            Operation::StartSendDir => recv_dir(stream, &ins, &mut arg).await?,
+            Operation::EndSendDir => recv_dir_end(stream, &ins, &mut arg).await?,
             Operation::SendMsg => recv_msg(stream, &ins).await?,
-            Operation::Disconnect => break,
+            Operation::Disconnect => shutdown(stream, ins.id).await?,
             _ => return Err(anyhow!("Unknown request instruction")),
         }
     }
+}
 
-    shutdown(stream, id).await?;
+async fn recv_dir(stream: &mut TcpStream, ins: &Instruction, arg: &mut RecvArg) -> Result<()> {
+    let dir_name_buf = utils::recv_content(stream, ins.length as usize).await?;
+    let dir_name = String::from_utf8(dir_name_buf)?;
+    let (child_path, renamed) = match get_valid_path(&dir_name, arg) {
+        Some((p, r)) => (p, r),
+        None => {
+            reply_refuse(stream, ins.id, "Directory refused: user chose skip").await?;
+            return Ok(());
+        }
+    };
+
+    // Only if the overwrite strategy is `rename`, a new directory needs to be created.
+    if renamed && !create_dir(&child_path) {
+        let detail = format!("Cannot create directory on receiver");
+        reply_error(stream, ins.id, &detail).await?;
+
+        return Ok(());
+    }
+
+    arg.dir = child_path;
+    log::debug!("Current working dir is: {:?}", &arg.dir);
+    reply_success(stream, ins.id).await?;
+
+    Ok(())
+}
+
+fn create_dir(path: &PathBuf) -> bool {
+    if let Err(e) = std::fs::create_dir(&path) {
+        message::send_msg(Message::Error(format!("Create dir failed: {}", e)));
+        return false;
+    }
+
+    true
+}
+
+async fn recv_dir_end(stream: &mut TcpStream, ins: &Instruction, arg:&mut RecvArg) -> Result<()> {
+    arg.dir.pop();
+    log::debug!("Current working dir: {:?}", &arg.dir);
+    reply_success(stream, ins.id).await?;
 
     Ok(())
 }
@@ -160,12 +199,12 @@ async fn recv_file_meta(stream: &mut TcpStream, ins: &Instruction,
         },
     };
 
-    debug!("File name: {}, size: {}", &name, size);
+    log::debug!("File name: {}, size: {}", &name, size);
     match get_valid_path(&name, arg) {
-        Some(path) => {
+        Some((path, _)) => {
             prepare_file(path, size, file).await?;
             reply_success(stream, ins.id).await?;
-            debug!("Prepared file: {:?}", file);
+            log::debug!("Prepared file: {:?}", file);
         },
         None => {
             reply_refuse(stream, ins.id, "File refused: user chose skip").await?;
@@ -191,6 +230,8 @@ async fn recv_file_end(stream: &mut TcpStream, ins: &Instruction, file: &mut Cur
         return Err(anyhow!("File not opened"));
     }
 
+    // Reset the current file when receiving the end file command.
+    *file = CurrentFile::default();
     utils::send_ins(stream, ins.id, Operation::RequestSuccess, None).await?;
 
     Ok(())
@@ -205,7 +246,7 @@ async fn recv_msg(stream: &mut TcpStream, ins: &Instruction) -> Result<()> {
     Ok(())
 }
 
-fn get_valid_path(name: &String, arg: &RecvArg) -> Option<PathBuf> {
+fn get_valid_path(name: &String, arg: &RecvArg) -> Option<(PathBuf, bool)> {
     let mut path = PathBuf::new();
     let mut overwrite = arg.overwrite.clone();
     let mut i = 0u16;
@@ -213,14 +254,16 @@ fn get_valid_path(name: &String, arg: &RecvArg) -> Option<PathBuf> {
 
     path.push(arg.dir.clone());
     path.push(name);
-    debug!("current path: {:?} and overwrite: {:?}", &path, &overwrite);
+    log::debug!("current path: {:?} and overwrite: {:?}", &path, &overwrite);
 
     while path.is_file() || path.is_dir() {
         match overwrite {
             OverwriteStrategy::Ask => {
                 overwrite = OverwriteStrategy::ask();
             },
-            OverwriteStrategy::Overwrite => break,
+            OverwriteStrategy::Overwrite => {
+                break;
+            },
             OverwriteStrategy::Rename => {
                 path.pop();
                 path.push(format!("{}_{}", i, name));
@@ -233,15 +276,15 @@ fn get_valid_path(name: &String, arg: &RecvArg) -> Option<PathBuf> {
     }
 
     if renamed {
-        message::send_msg(Message::Status(format!("file renamed to {:?}", 
+        message::send_msg(Message::Status(format!("path renamed to {:?}", 
             path.file_name().unwrap())));
     }
 
-    Some(path)
+    Some((path, renamed))
 }
 
 async fn prepare_file(path: PathBuf, size: u64, file: &mut CurrentFile) -> Result<()> {
-    debug!("Creating file: {:?}", &path);
+    log::debug!("Creating file: {:?}", &path);
     let filename = String::from(path.file_name().unwrap().to_str().unwrap());
     let path_str = path.to_str().unwrap();
     let fd = OpenOptions::new().write(true).create(true).open(path_str).await?;
@@ -283,4 +326,3 @@ async fn reply_refuse(stream: &mut TcpStream, id: u16, detail_str: &str) -> Resu
 
     Ok(())
 }
-

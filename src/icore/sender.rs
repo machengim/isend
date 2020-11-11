@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use async_std::fs::OpenOptions;
 use async_std::prelude::*;
 use async_std::net::{UdpSocket, TcpStream};
-use log::{debug, info};
+use async_std::task::block_on;
 use std::path::PathBuf;
 use std::net::SocketAddr;
 use std::sync::{mpsc, Mutex};
@@ -41,7 +41,7 @@ pub async fn launch(arg: SendArg) -> Result<()> {
     tx.send(true)?;
 
     // Start sending files and messages.
-    start_working(&mut stream, arg).await?;
+    start_sending(&mut stream, arg).await?;
 
     Ok(())
 }
@@ -61,11 +61,11 @@ async fn listen_udp(udp: &UdpSocket, expire: u8, password: Option<&String>) -> R
 
         // If this socket already in black list, ignore it.
         if BLACK_LIST.lock().unwrap().contains(&socket) {
-            debug!("Found socket in black list {}", &socket);
+            log::debug!("Found socket in black list {}", &socket);
             continue;
         }
 
-        debug!("Connection request from {}", socket);
+        log::debug!("Connection request from {}", socket);
         if let Some(stream) = try_connect_tcp(&socket, password).await? {
             return Ok(stream);
         }
@@ -118,9 +118,9 @@ async fn timer(expire: u8, rx: mpsc::Receiver<bool>) {
 }
 
 // After the connection established, start sending files and messages from here.
-async fn start_working(stream: &mut TcpStream, arg: SendArg) -> Result<()> {
+async fn start_sending(stream: &mut TcpStream, arg: SendArg) -> Result<()> {
     if arg.files.is_some() {
-        send_files(stream, &arg.files.unwrap()).await?;
+        send_files(stream, &arg.files.unwrap())?;
     }
 
     if arg.msg.is_some(){
@@ -128,19 +128,69 @@ async fn start_working(stream: &mut TcpStream, arg: SendArg) -> Result<()> {
     }
 
     if request_disconnect(stream).await? {
-        message::send_msg(Message::Status(format!("Ready to shutdown")));
+        log::debug!("Ready to shutdown");
     }
 
     message::send_msg(Message::Done);
     Ok(())
 }
 
-async fn send_files(stream: &mut TcpStream, files: &Vec<PathBuf>) -> Result<()> {
+// identify files and dirs and process them accordingly.
+// Remove `async` of this function to avoid async recursion.
+fn send_files(stream: &mut TcpStream, files: &Vec<PathBuf>) -> Result<()> {
     for file in files {
-        if let Err(e) = send_single_file(stream, file).await {
-            message::send_msg(Message::Error(format!("Error sending file {:?} : {}", file, e)));
+        if file.is_file() {
+            if let Err(e) = block_on(send_single_file(stream, file)) {
+                message::send_msg(Message::Error(format!("Error sending file {:?} : {}", file, e)));
+            }
+        } else if file.is_dir() {
+            if let Err(e) = block_on(send_dir(stream, file)) {
+                message::send_msg(Message::Error(format!("Error sending dir {:?} : {}", file, e)));
+            }
+        } else {
+            return Err(anyhow!("Unknow file type"));
         }
     }
+
+    Ok(())
+}
+
+// 1. Check the directory name first. TODO: if overwrite strategy is overwrite, do not create the dir.
+// 2. Collect all paths inside the current dir and pass them to send_files() function.
+// Async function doesn't support recursion.
+async fn send_dir(stream: &mut TcpStream, dir: &PathBuf) -> Result<()> {
+    let id = read_id();
+    let dir_name = dir.file_name().unwrap().to_str().unwrap().to_string();
+    utils::send_ins(stream, id, Operation::StartSendDir, Some(&dir_name)).await?;
+    incre_id();
+
+    // If request being refused, abort the following action.
+    // Message has been sent to UI through the process_reply() function.
+    if !process_reply(stream, id).await? {
+        return Ok(());
+    }
+
+    let mut paths = Vec::new();
+    for entry in dir.read_dir()? {
+        if let Ok(entry) = entry {
+            paths.push(entry.path());
+        }
+    }
+
+    // Problem unsolved: once the recursion starts, the return type is required to be `dyn Future`.
+    send_files(stream, &paths)?;
+    
+    send_dir_end(stream).await?;
+
+    Ok(())
+}
+
+async fn send_dir_end(stream: &mut TcpStream) -> Result<()> {
+    let id = read_id();
+    utils::send_ins(stream, id, Operation::EndSendDir, None).await?;
+    incre_id();
+
+    process_reply(stream, id).await?;
 
     Ok(())
 }
@@ -170,7 +220,7 @@ async fn send_file_meta(stream: &mut TcpStream, file: &CurrentFile) -> Result<bo
 }
 
 async fn send_file_content(stream: &mut TcpStream, f: &CurrentFile) -> Result<()> {
-    debug!("Sending file content");
+    log::debug!("Sending file content");
     let mut file = OpenOptions::new().read(true).open(f.path.clone()).await?;
     let chunk_size = 0x800000;  // 8M size
 
@@ -180,7 +230,6 @@ async fn send_file_content(stream: &mut TcpStream, f: &CurrentFile) -> Result<()
         if length == 0 { break; }
 
         utils::send_ins_bytes(stream, read_id(), Operation::SendFileContent, &chunk).await?;
-        break;
     }
 
     incre_id();

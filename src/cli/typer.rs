@@ -79,7 +79,7 @@ fn print_done() {
     flush();
 
     // wait half a second so that all output finish.
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    //std::thread::sleep(std::time::Duration::from_secs(1));
     std::process::exit(0);
 }
 

@@ -1,5 +1,4 @@
 use anyhow::{Result, anyhow};
-use log::{debug, info};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{mpsc, Mutex, MutexGuard};
 
@@ -34,7 +33,7 @@ lazy_static::lazy_static!{
 pub fn launch(rx: Receiver<String>, tx: Sender<Message>) {
     let mut pipe = PIPE.lock().unwrap();
     *pipe = MsgPipe{rx, tx};
-    debug!("Message pipe created");
+    log::debug!("Message pipe created");
 }
 
 // public interface to send message to UI.
