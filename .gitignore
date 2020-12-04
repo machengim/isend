@@ -4,8 +4,6 @@
 **/.idea
 
 **/*.class
-**/pgdata
-
 
 # Added by cargo
 
