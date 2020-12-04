@@ -9,7 +9,7 @@ pub const INS_SIZE: usize = 8;
 #[repr(u8)]
 pub enum Operation {
     // Request operation code.
-    Connect = 10,    // with or without password, needs reply
+    Connect = 10,           // with or without password, needs reply
     StartSendFile = 20,     // with file name, needs reply
     SendFileContent = 21,   // with file content
     EndSendFile = 22,       // needs reply

@@ -73,8 +73,8 @@ fn parse_expire(m: &ArgMatches) -> u8 {
         }
     }
 
-    // Test use: default expire time 1 minute.
-    1
+    // Test use: default expire time 2 minute.
+    2
 }
 
 fn parse_msg(m: &ArgMatches) -> Option<String> {

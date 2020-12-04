@@ -20,7 +20,7 @@ pub struct MsgPipe {
     tx: Sender<Message>,
 }
 
-// Init a fake MsgPipe.
+// Init a fake MsgPipe as placeholder.
 lazy_static::lazy_static!{
     static ref PIPE: Mutex<MsgPipe> = {
         let (_, rx) = mpsc::channel();

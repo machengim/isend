@@ -23,7 +23,7 @@ pub fn launch() {
 // listen on the channel continuously to get message from icore.
 fn listen_msg(rx: Receiver<Message>, tx: Sender<String>) {
     // False if the next content needs to start a new line or just refresh the current.
-    // Only the timer and progress are not fixed (true).
+    // Only the timer and progress are dynamic(true).
     let mut line = LineType::Text;    
 
     loop {

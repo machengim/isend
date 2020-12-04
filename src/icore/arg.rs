@@ -28,7 +28,7 @@ pub struct RecvArg {
     pub dir: PathBuf,
     pub overwrite: OverwriteStrategy,
     pub password: Option<String>,
-    pub code: u16,  // Actually this is the port number
+    pub code: u16,  // Port number
 }
 
 impl Default for OverwriteStrategy {
@@ -41,9 +41,6 @@ impl OverwriteStrategy {
     // Ask the user for an overwrite strategy.
     // Note that 'ask' is not in the options but still used as default.
     pub fn ask() -> Self {
-        //println!("Please choose: overwrite(o) | rename(r) | skip (s): ");
-        //let mut input = String::new();
-        //if let Ok(_) = std::io::stdin().read_line(&mut input) {
         let input = send_prompt(Message::Prompt(
             "Please choose: overwrite(o) | rename(r) | skip (s): ".to_string()));
 
@@ -52,7 +49,6 @@ impl OverwriteStrategy {
             "r" | "R" => return OverwriteStrategy::Rename,
             "s" | "S" => return OverwriteStrategy::Skip,
             _ => {
-                //println!("Unknown overwrite strategy chose");
                 send_msg(Message::Status(format!("Unknown overwrite strategy chose")));
             }
         }
@@ -60,4 +56,3 @@ impl OverwriteStrategy {
         OverwriteStrategy::Ask
     }
 }
-
