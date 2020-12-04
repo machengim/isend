@@ -228,7 +228,7 @@ async fn send_file_meta(stream: &mut TcpStream, file: &CurrentFile) -> Result<bo
 async fn send_file_content(stream: &mut TcpStream, f: &mut CurrentFile) -> Result<()> {
     log::debug!("Sending file content");
     let mut file = OpenOptions::new().read(true).open(f.path.clone()).await?;
-    let chunk_size = 0x400000;  // 4M frame size
+    let chunk_size = 0x200000;  // 2M frame size
 
     loop {
         let mut chunk = Vec::with_capacity(chunk_size);

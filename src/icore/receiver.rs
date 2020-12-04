@@ -137,6 +137,8 @@ async fn start_recving(stream: &mut TcpStream, arg:RecvArg) -> Result<()> {
 async fn recv_dir(stream: &mut TcpStream, ins: &Instruction, arg: &mut RecvArg) -> Result<()> {
     let dir_name_buf = utils::recv_content(stream, ins.length as usize).await?;
     let dir_name = String::from_utf8(dir_name_buf)?;
+    message::send_msg(Message::Status(format!("Start receiving directory: {:?}", dir_name)));
+
     let (child_path, needs_create) = match get_valid_path(&dir_name, arg) {
         Some((path, need)) => (path, need),
         None => {
@@ -260,9 +262,11 @@ fn get_valid_path(name: &String, arg: &RecvArg) -> Option<(PathBuf, bool)> {
     path.push(name);
 
     let dir_name = path.file_name().unwrap();
+    /*
     if path.is_dir() {
         message::send_msg(Message::Status(format!("Start receiving directory: {:?}", dir_name)));
     }
+    */
 
     let ftype = if path.is_file() { "file" } else { "directory" };
     let existed = path.is_file() || path.is_dir();
