@@ -39,7 +39,7 @@ pub async fn launch(arg: SendArg) -> Result<()> {
     let password = arg.password.clone();
     let mut stream = listen_udp(&udp, expire, password.as_ref()).await?;
     tx.send(true)?;
-    message::send_msg(Message::Status(format!("Connection established\n")));
+    //message::send_msg(Message::Status(format!("Connection established\n")));
 
     // Start sending files and messages.
     start_sending(&mut stream, arg).await?;
@@ -68,6 +68,7 @@ async fn listen_udp(udp: &UdpSocket, expire: u8, password: Option<&String>) -> R
 
         log::debug!("Connection request from {}", socket);
         if let Some(stream) = try_connect_tcp(&socket, password).await? {
+            message::send_msg(Message::Status(format!("Connection established with {}\n", &addr)));
             return Ok(stream);
         }
 

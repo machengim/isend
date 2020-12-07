@@ -1,6 +1,8 @@
 ISend Protocol
 ---
 
+### The protocol detail may change. Please check it in `src/icore/instruction.rs`.
+
 ### Send file process:
 
 + START

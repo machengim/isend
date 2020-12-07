@@ -6,12 +6,12 @@ args:
     - send:
         short: s
         long: send
-        about: indicate this side is the sender
+        about: indicates this side is the sender
         takes_value: false
     - receive:
         short: r
         long: receive
-        about: indicate this side is the receiver
+        about: indicates this side is the receiver
         takes_value: false
     - expire:
         short: e
@@ -25,15 +25,15 @@ args:
         takes_value: true
     - overwrite:
         long: overwrite
-        about: Receiver sets to overwrite files with same name
+        about: Receiver sets the overwrite strategy if file/dir already existed which could be "o" (overwrite), "r" (rename) or "s" (skip)
         takes_value: true
     - password:
         short: p
         long: password
-        about: Sets the password for this connection
+        about: Sets the password for this connection that should be input in the new line as the Unix convention
         takes_value: false
     - INPUT:
-        about: The files to send or the code to receive
+        about: The contents to send on the sender side or the receiving code on the receiver side
         multiple: true
         index: 1
         

@@ -77,9 +77,7 @@ impl Instruction {
 
         let length = u32::from_be_bytes([buf[4], buf[5], buf[6], buf[7]]);
 
-        Ok(Instruction{
-            id, operation, buffer, length,
-        })
+        Ok(Instruction{ id, operation, buffer, length })
     }
 }
 

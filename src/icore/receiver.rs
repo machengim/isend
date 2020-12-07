@@ -4,6 +4,7 @@ use async_std::fs::OpenOptions;
 use async_std::net::{TcpListener, TcpStream, UdpSocket};
 use std::path::PathBuf;
 use std::sync::mpsc;
+use std::time::Instant;
 use super::arg::{OverwriteStrategy, RecvArg};
 use super::currentfile::CurrentFile;
 use super::instruction::{Instruction, Operation};
@@ -68,7 +69,7 @@ async fn listen_tcp_conn(socket: &TcpListener, password: Option<&String>) -> Res
                 match valiate_tcp_conn(&mut stream, &ins, password).await {
                     Ok(true) => {
                         utils::send_ins(&mut stream, 0, Operation::RequestSuccess, None).await?;
-                        message::send_msg(Message::Status(format!("Connection established\n")));
+                        message::send_msg(Message::Status(format!("Connection established with {}\n", &addr)));
                         return Ok(stream);
                     },
                     Ok(false) => {
@@ -115,11 +116,13 @@ async fn compare_pass(stream: &mut TcpStream, ins: &Instruction, password: &Stri
 }
 
 async fn start_recving(stream: &mut TcpStream, arg:RecvArg) -> Result<()> {
+    let start_time = Instant::now();
     let mut arg = arg;
     let mut current_file = CurrentFile::default();
+    let mut ins: Instruction;
 
     loop {
-        let ins = utils::recv_ins(stream).await?;
+        ins = utils::recv_ins(stream).await?;
         
         match ins.operation {
             Operation::StartSendFile => recv_file_meta(stream, &ins, &mut current_file, &arg).await?,
@@ -128,10 +131,12 @@ async fn start_recving(stream: &mut TcpStream, arg:RecvArg) -> Result<()> {
             Operation::StartSendDir => recv_dir(stream, &ins, &mut arg).await?,
             Operation::EndSendDir => recv_dir_end(stream, &ins, &mut arg).await?,
             Operation::SendMsg => recv_msg(stream, &ins).await?,
-            Operation::Disconnect => shutdown(stream, ins.id).await?,
+            Operation::Disconnect => break,
             _ => return Err(anyhow!("Unknown request instruction")),
         }
     }
+
+    shutdown(stream, ins.id, &start_time).await
 }
 
 async fn recv_dir(stream: &mut TcpStream, ins: &Instruction, arg: &mut RecvArg) -> Result<()> {
@@ -319,9 +324,10 @@ async fn prepare_file(path: PathBuf, size: u64, file: &mut CurrentFile) -> Resul
     Ok(())
 }
 
-async fn shutdown(stream: &mut TcpStream, id: u16) -> Result<()> {
+async fn shutdown(stream: &mut TcpStream, id: u16, start_time: &Instant) -> Result<()> {
     utils::send_ins(stream, id, Operation::RequestSuccess, None).await?;
-    //stream.shutdown(std::net::Shutdown::Both)?;
+    //let time_used = start_time.elapsed().as_secs();
+    //message::send_msg(Message::Status(format!("Time used in transmission: {} seconds", &time_used)));
     message::send_msg(Message::Done);
 
     Ok(())
